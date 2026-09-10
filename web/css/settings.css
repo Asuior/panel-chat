@@ -1,0 +1,192 @@
+/* ============================================================
+   设置弹层样式
+   ============================================================ */
+.settings-body { display: flex; min-height: 440px; max-height: 78vh; }
+.settings-tabs {
+  width: 128px; flex: 0 0 128px;
+  display: flex; flex-direction: column; gap: 4px;
+  padding: 16px 10px;
+  border-right: 1px solid var(--glass-border);
+}
+.settings-tabs button {
+  text-align: left; padding: 9px 12px; border-radius: 9px;
+  font-size: 13px; color: var(--text-secondary); transition: all .12s;
+}
+.settings-tabs button:hover { background: var(--hover); color: var(--text-primary); }
+.settings-tabs button.active { background: var(--active); color: var(--accent-1); font-weight: 600; }
+.settings-panels { flex: 1; overflow-y: auto; padding: 18px 22px; min-width: 0; }
+.settings-panels .panel { display: none; }
+.settings-panels .panel.active { display: block; }
+.panel h3 { font-size: 14px; margin-bottom: 14px; display: flex; align-items: center; gap: 8px; }
+.panel .group { margin-bottom: 18px; }
+.panel .group > label { display: block; font-size: 12px; color: var(--text-secondary); margin-bottom: 6px; }
+.row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
+.row .grow { flex: 1; min-width: 160px; }
+
+.field { width: 100%; }
+input.field, textarea.field, select.field {
+  padding: 8px 10px; font-size: 13px;
+  background: var(--glass-bg); border: 1px solid var(--glass-border);
+  border-radius: 8px;
+}
+textarea.field { resize: vertical; min-height: 80px; -webkit-user-select: text; user-select: text; }
+select.field option { color: #1c1f2b; background: #fff; }
+
+/* 开关 */
+.switch { position: relative; width: 40px; height: 22px; flex: 0 0 40px; }
+.switch input { opacity: 0; width: 0; height: 0; }
+.switch .track {
+  position: absolute; inset: 0; border-radius: 999px;
+  background: rgba(120,120,160,.35); transition: background .2s; cursor: pointer;
+}
+.switch .track::after {
+  content: ""; position: absolute; width: 16px; height: 16px; border-radius: 50%;
+  background: #fff; top: 3px; left: 3px; transition: transform .2s; box-shadow: 0 1px 3px rgba(0,0,0,.3);
+}
+.switch input:checked + .track { background: var(--accent-1); }
+.switch input:checked + .track::after { transform: translateX(18px); }
+
+/* provider 卡片 */
+.pcard {
+  display: flex; gap: 10px; align-items: flex-start;
+  padding: 10px 12px; border-radius: 10px; cursor: pointer;
+  border: 1px solid var(--glass-border); margin-bottom: 8px;
+  background: var(--glass-bg); transition: all .12s;
+}
+.pcard:hover { background: var(--hover); }
+.pcard.sel { border-color: var(--accent-1); background: var(--active); }
+.pcard .radio {
+  width: 16px; height: 16px; border-radius: 50%; flex: 0 0 16px;
+  border: 2px solid rgba(120,120,160,.6); margin-top: 2px;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.pcard.sel .radio { border-color: var(--accent-1); }
+.pcard.sel .radio::after { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--accent-1); }
+.pcard .pname { font-weight: 600; font-size: 13px; }
+.pcard .pdesc { font-size: 11.5px; color: var(--text-secondary); margin-top: 3px; line-height: 1.5; }
+
+/* 主题卡片 */
+.theme-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+.tcard {
+  border: 1px solid var(--glass-border); border-radius: 10px; overflow: hidden;
+  cursor: pointer; background: var(--glass-bg); transition: all .12s;
+}
+.tcard:hover { transform: translateY(-2px); }
+.tcard.sel { border-color: var(--accent-1); box-shadow: 0 0 0 2px rgba(124,77,255,.25); }
+.tcard .swatch { height: 46px; background: linear-gradient(135deg, var(--accent-1), var(--accent-2)); }
+.tcard .tinfo { padding: 8px 10px; font-size: 12px; }
+.tcard .tinfo .nm { font-weight: 600; }
+.tcard .tinfo .au { color: var(--text-secondary); font-size: 11px; }
+
+/* 头像预览 */
+.avatar-lg {
+  width: 54px; height: 54px; border-radius: 50%;
+  background: var(--accent-gradient);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 20px; color: #fff; overflow: hidden; cursor: pointer;
+  border: 2px solid var(--glass-border);
+}
+.avatar-lg img { width: 100%; height: 100%; object-fit: cover; }
+
+/* 提示词管理 */
+.pg-item {
+  border: 1px solid var(--glass-border); border-radius: 10px;
+  margin-bottom: 10px; overflow: hidden; background: var(--glass-bg);
+}
+.pg-item .pg-head {
+  display: flex; align-items: center; gap: 8px; padding: 8px 12px;
+  background: rgba(255,255,255,.08);
+}
+.pg-item .pg-head input { flex: 1; padding: 5px 8px; font-size: 13px; background: transparent; border: none; border-bottom: 1px dashed var(--glass-border); }
+.pg-item .pg-body { padding: 4px 12px 10px; }
+.pg-item textarea {
+  width: 100%; font-size: 12.5px; line-height: 1.6; min-height: 64px;
+  background: rgba(255,255,255,.5); border: 1px solid var(--glass-border);
+  border-radius: 8px; padding: 8px; resize: vertical;
+  -webkit-user-select: text; user-select: text; color: #23263a;
+}
+.enabled-order { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
+.eo-item {
+  display: flex; align-items: center; gap: 8px; font-size: 12.5px;
+  background: var(--glass-bg); border: 1px solid var(--glass-border);
+  border-radius: 8px; padding: 6px 10px;
+}
+.eo-item .idx { color: var(--accent-1); font-weight: 700; width: 18px; }
+.eo-item .eo-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.eo-item button { font-size: 12px; padding: 2px 6px; border-radius: 5px; }
+.eo-item button:hover { background: var(--hover); }
+.muted { color: var(--text-secondary); font-size: 12px; line-height: 1.7; }
+.hotkey-box {
+  font-family: var(--font-mono); background: var(--glass-bg);
+  border: 1px dashed var(--glass-border); border-radius: 8px;
+  padding: 8px 12px; font-size: 12.5px; display: inline-block;
+}
+.static-info { font-size: 12.5px; line-height: 2; }
+.static-info b { color: var(--accent-1); }
+
+/* ============================================================
+   覆盖/新增：开关可点击修复 + 分组多条提示词 + 接口参数表单
+   ============================================================ */
+
+/* 开关：让整块（含轨道）可点击，而不是只点那 0 尺寸的隐藏 checkbox */
+.switch { position: relative; width: 40px; height: 22px; flex: 0 0 40px; cursor: pointer; }
+.switch input {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  margin: 0; opacity: 0; z-index: 2; cursor: pointer;
+}
+.switch .track { pointer-events: none; }
+
+/* 分组内多条提示词 */
+.pg-item .pg-prompts {
+  padding: 4px 12px 6px;
+  display: flex; flex-direction: column; gap: 8px;
+}
+.pg-item .pg-prompt {
+  border: 1px solid var(--glass-border);
+  border-radius: 8px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.4);
+}
+.pg-item .pg-prompt .pp-head {
+  display: flex; align-items: center; gap: 8px;
+  padding: 5px 10px; font-size: 11px; color: var(--text-secondary);
+  background: rgba(255, 255, 255, 0.3);
+}
+.pg-item .pp-head .pp-idx { font-weight: 700; color: var(--accent-1); margin-right: 4px; }
+.pg-item .pp-head .grow { flex: 1; }
+.pg-item .pp-head .pgp-del {
+  color: var(--danger); font-size: 11px; padding: 2px 6px; border-radius: 5px;
+}
+.pg-item .pp-head .pgp-del:hover { background: rgba(229, 57, 53, .12); }
+.pg-prompt textarea {
+  width: 100%; min-height: 56px; resize: vertical;
+  padding: 8px 10px;
+  border: none; outline: none;
+  background: transparent;
+  font-size: 12.5px; line-height: 1.6; font-family: inherit; color: #23263a;
+  -webkit-user-select: text; user-select: text;
+}
+.pg-item .pg-add-prompt {
+  display: block; margin: 0 12px 10px;
+  font-size: 12px; color: var(--accent-1);
+}
+.pg-item .pg-empty { padding: 6px 12px 4px; font-size: 12px; color: var(--text-secondary); }
+.pg-item .pg-head .pg-count { font-size: 11px; color: var(--text-secondary); white-space: nowrap; }
+
+/* 接口自定义参数表单 */
+.param-form { border-top: 1px dashed var(--glass-border); padding-top: 12px; }
+.param-form > label { display: block; font-size: 12px; color: var(--text-secondary); margin-bottom: 10px; }
+.param-item { margin-bottom: 12px; }
+.param-item > label { display: block; font-size: 12.5px; font-weight: 600; margin-bottom: 5px; }
+.param-item > label small { font-weight: 400; color: var(--text-secondary); }
+.param-item .pdesc { font-size: 11px; color: var(--text-secondary); margin: 3px 0 6px; line-height: 1.5; }
+.param-item input[type=text],
+.param-item input[type=password],
+.param-item input[type=number] {
+  width: 100%; padding: 8px 10px; font-size: 13px;
+  background: rgba(255, 255, 255, 0.65);
+  border: 1px solid var(--glass-border); border-radius: 8px;
+  color: #23263a;
+  -webkit-user-select: text; user-select: text;
+}
+.param-item input:focus { border-color: rgba(124, 77, 255, 0.5); }

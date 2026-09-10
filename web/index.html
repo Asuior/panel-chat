@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI 悬浮窗</title>
+  <link rel="stylesheet" href="css/base.css">
+  <link rel="stylesheet" href="css/chat.css">
+  <link rel="stylesheet" href="css/settings.css">
+  <!-- 动态主题（apply_theme 后由 js/theme.js 切换） -->
+</head>
+<body class="chat-page">
+  <div class="app" id="app">
+
+    <!-- ======== 左侧：会话列表 ======== -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-head">
+        <div class="brand"><span class="logo" id="brandLogo"></span><span id="brandName">AI 助手</span></div>
+        <button class="btn btn-primary" id="btnNewChat">＋ 新对话</button>
+      </div>
+      <div class="conv-list" id="convList"></div>
+      <div class="sidebar-foot">
+        <div class="mini">
+          <div class="avatar avatar-sm" id="miniAvatar"></div>
+          <span class="nm" id="miniName">我</span>
+        </div>
+        <div class="foot-btns">
+          <button class="btn-icon" id="btnSettings" title="设置">⚙</button>
+          <button class="btn-icon" id="btnHideChat" data-icon="min" title="隐藏悬浮窗（热键再次呼出）"></button>
+        </div>
+      </div>
+    </aside>
+
+    <!-- ======== 主区域 ======== -->
+    <main class="main">
+      <header class="chat-head pywebview-drag-region" id="chatHead">
+        <div style="min-width:0">
+          <div class="chat-title" id="chatTitle">新对话</div>
+          <div class="chat-sub" id="chatSub">输入消息开始聊天 · Enter 发送</div>
+        </div>
+        <div class="head-actions">
+          <button class="btn-icon" id="btnSidebarToggle" title="收起侧边栏">☰</button>
+          <select id="providerSelect" title="AI 接口"></select>
+          <button class="btn-icon" id="btnHideChat2" data-icon="min" title="隐藏悬浮窗"></button>
+          <button class="btn-icon" id="btnSettings2" title="设置">⚙</button>
+        </div>
+      </header>
+
+      <div class="messages" id="messages">
+        <div class="welcome" id="welcome">
+          <div class="big"></div>
+          <h2>你好，我是你的 AI 助手</h2>
+          <p>· 拖拽任意文件到悬浮球，自动 AI 处理并写回<br>
+             · 消息可「编辑 / 删除」：修改最新提问将自动重新生成回答<br>
+             · 支持 Markdown，代码块可一键复制</p>
+          <div class="chips">
+            <button class="btn" data-quick="设置 AI 接口">选择 AI 接口</button>
+            <button class="btn" data-quick="管理系统提示词">管理系统提示词</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 输入区 -->
+      <div class="composer" id="composer">
+        <!-- 多模态：待发送图片缩略图 -->
+        <div class="img-tray" id="imgTray" hidden></div>
+        <div class="typing-row" id="typingRow" hidden>
+          <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+          <span id="typingText">AI 正在思考…</span>
+        </div>
+        <div class="composer-row">
+          <button class="btn btn-img" id="btnAddImage" title="上传图片" hidden>🖼</button>
+          <textarea id="input" rows="1" placeholder="输入消息，Enter 发送，Shift+Enter 换行"></textarea>
+          <button class="btn btn-primary" id="btnSend">发送</button>
+        </div>
+        <input type="file" id="imgFile" accept="image/*" multiple hidden>
+        <div class="drop-mask" id="dropMask" hidden>松开放入图片</div>
+      </div>
+      </div>
+    </main>
+
+    <!-- 尺寸调节把手 -->
+    <div class="rz rz-right" id="rzRight"></div>
+    <div class="rz rz-bottom" id="rzBottom"></div>
+    <div class="rz rz-corner" id="rzCorner"></div>
+  </div>
+
+  <div class="toast-wrap" id="toastWrap"></div>
+
+  <!-- ======== 设置弹层 ======== -->
+  <div class="modal-mask" id="settingsModal">
+    <div class="modal">
+      <div class="settings-body">
+        <div class="settings-tabs" id="settingsTabs">
+          <button data-tab="appearance" class="active">外观</button>
+          <button data-tab="ai">AI 接口</button>
+          <button data-tab="prompts">提示词</button>
+          <button data-tab="file">文件处理</button>
+          <button data-tab="general">通用</button>
+        </div>
+
+        <div class="settings-panels" id="settingsPanels">
+          <!-- 外观 -->
+          <section class="panel active" data-panel="appearance">
+            <h3>🎨 外观与主题</h3>
+            <div class="group">
+              <label>界面主题（复制 themes/ 下文件夹可自建主题）</label>
+              <div class="theme-grid" id="themeGrid"></div>
+            </div>
+            <div class="group">
+              <label>聊天背景图（点击上传，支持 png/jpg/webp）</label>
+              <div class="row">
+                <button class="btn" id="btnBgUpload">上传背景图</button>
+                <button class="btn" id="btnBgRemove">移除背景</button>
+                <input type="file" id="bgFile" accept="image/*" hidden>
+              </div>
+            </div>
+            <div class="group">
+              <label>我的资料（头像点击可上传）</label>
+              <div class="row">
+                <div class="avatar-lg" id="userAvatarLg" title="点击上传头像">我</div>
+                <div style="flex:1">
+                  <input class="field" id="userName" placeholder="我的名称" maxlength="20">
+                  <button class="btn" id="btnUserAvatarReset" style="margin-top:6px">恢复默认头像</button>
+                </div>
+                <input type="file" id="userAvatarFile" accept="image/*" hidden>
+              </div>
+            </div>
+            <div class="group">
+              <label>AI 资料</label>
+              <div class="row">
+                <div class="avatar-lg" id="aiAvatarLg" title="点击上传头像">A</div>
+                <div style="flex:1">
+                  <input class="field" id="aiName" placeholder="AI 名称" maxlength="20">
+                  <button class="btn" id="btnAiAvatarReset" style="margin-top:6px">恢复默认头像</button>
+                </div>
+                <input type="file" id="aiAvatarFile" accept="image/*" hidden>
+              </div>
+            </div>
+          </section>
+
+          <!-- AI 接口 -->
+          <section class="panel" data-panel="ai">
+            <h3>🤖 AI 接口</h3>
+            <div class="group" id="providerCards"></div>
+            <div class="group" id="paramForm"></div>
+            <div class="group" id="multimodalBox"></div>
+            <div class="group">
+              <label>温度 temperature：<b id="tempVal">0.7</b></label>
+              <input type="range" id="tempRange" min="0" max="1.5" step="0.05" value="0.7" style="width:100%">
+            </div>
+            <div class="group muted" id="providerHelp"></div>
+          </section>
+
+          <!-- 提示词 -->
+          <section class="panel" data-panel="prompts">
+            <h3>📋 系统提示词分组</h3>
+            <div class="muted" style="margin-bottom:12px">
+              创建分组并为每个分组添加多条提示词；用右侧“开关”启用一个或多个分组，
+              下方按顺序排列，对话与文件处理会把启用分组里的提示词依次拼接成系统提示词。
+            </div>
+            <div class="muted" id="promptStat" style="margin-bottom:8px"></div>
+            <div id="promptGroups"></div>
+            <button class="btn" id="btnAddPrompt" style="margin-top:4px">＋ 新建分组</button>
+            <div class="group" style="margin-top:18px">
+              <label>启用顺序（上方的“启用开关”加入，拖动顺序即拼接顺序）</label>
+              <div class="enabled-order" id="enabledOrder"></div>
+            </div>
+          </section>
+
+          <!-- 文件处理 -->
+          <section class="panel" data-panel="file">
+            <h3>📁 拖拽文件处理</h3>
+            <div class="group">
+              <label>写回方式</label>
+              <div class="row">
+                <label style="display:flex;gap:6px;align-items:center"><input type="radio" name="fileMode" value="overwrite"> 覆盖原文件</label>
+                <label style="display:flex;gap:6px;align-items:center"><input type="radio" name="fileMode" value="append"> 追加到文件末尾</label>
+              </div>
+            </div>
+            <div class="group">
+              <label>处理指令模板（附在系统提示词后）</label>
+              <textarea class="field" id="fileInstruction" style="min-height:90px"></textarea>
+            </div>
+            <div class="group">
+              <label>单文件最大字符数</label>
+              <input class="field" type="number" id="fileMaxChars" min="1000" max="1000000" step="1000">
+            </div>
+            <div class="muted">支持 .txt/.md/.py/.json/.csv/.html/.css 等文本文件；超大或二进制文件会被拒绝。</div>
+          </section>
+
+          <!-- 通用 -->
+          <section class="panel" data-panel="general">
+            <h3>⚙️ 通用</h3>
+            <div class="group">
+              <label>悬浮球自动光效（按时段切换颜色与呼吸）</label>
+              <div class="row">
+                <span class="switch"><input type="checkbox" id="swBallFx"><span class="track"></span></span>
+              </div>
+            </div>
+            <div class="group">
+              <label>全局热键（当前值；修改请在 data/settings.json 的 hotkeys 中编辑后重启）</label>
+              <div class="hotkey-box" id="hotkeyBox"></div>
+            </div>
+            <div class="group">
+              <label>交互说明</label>
+              <div class="static-info">
+                · 单击悬浮球 → 打开本窗口<br>
+                · 双击悬浮球 → 功能预留（后续自定义入口）<br>
+                · 文件拖到悬浮球上 → AI 处理并写回<br>
+                · 修改<b>最新一条</b>提问 → 自动重新生成回答<br>
+                · 删除某条消息 → 其后的内容一并删除<br>
+                · 数据目录：<b id="dataDirText">data/</b>
+              </div>
+            </div>
+          </section>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 自绘确认弹窗（替代浏览器 confirm） -->
+  <div class="modal-mask" id="confirmModal">
+    <div class="confirm-box">
+      <div class="confirm-title" id="confirmTitle">确认操作</div>
+      <div class="confirm-text" id="confirmText"></div>
+      <div class="confirm-actions">
+        <button class="btn" id="confirmCancel">取消</button>
+        <button class="btn confirm-ok" id="confirmOk">删除</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 脚本（顺序敏感） -->
+  <script src="js/api.js"></script>
+  <script src="js/util.js"></script>
+  <script src="js/markdown.js"></script>
+  <script src="js/theme.js"></script>
+  <script src="js/settings.js"></script>
+  <script src="js/chat.js"></script>
+</body>
+</html>

@@ -1,0 +1,60 @@
+/* ============================================================
+   主题：玻璃拟态 · 默认 (Glassmorphism)
+   ============================================================
+   说明：
+     - 主样式表（web/css/base.css / chat.css / floatball.css）全部
+       通过 CSS 变量取色，本文件只需覆盖 :root 变量即可完成换肤；
+     - 自定义主题：复制本目录为 themes/<你的主题名>/，
+       修改本文件的变量与 manifest.json 后重启程序即可生效；
+     - 本文件使用 file:// 被 <link> 动态加载，url() 相对本文件解析。
+   ============================================================ */
+
+:root {
+  /* ---- 品牌色 ---- */
+  --accent-1: #7c4dff;          /* 霓虹紫 */
+  --accent-2: #00bcd4;          /* 青色 */
+  --accent-gradient: linear-gradient(135deg, #7c4dff, #00bcd4);
+
+  /* ---- 毛玻璃面板 ---- */
+  --glass-bg: rgba(255, 255, 255, 0.14);
+  --glass-bg-strong: rgba(255, 255, 255, 0.24);
+  --glass-border: rgba(255, 255, 255, 0.35);
+  --glass-blur: 20px;
+
+  /* ---- 文本 ---- */
+  --text-primary: #1c1f2b;
+  --text-secondary: rgba(28, 31, 43, 0.62);
+  --text-on-accent: #ffffff;
+
+  /* ---- 消息气泡 ---- */
+  --bubble-user: linear-gradient(135deg, #7c4dff, #5e35b1);
+  --bubble-user-text: #ffffff;
+  --bubble-ai: rgba(255, 255, 255, 0.55);
+  --bubble-ai-text: #1c1f2b;
+
+  /* ---- 控件 ---- */
+  --hover: rgba(255, 255, 255, 0.22);
+  --active: rgba(124, 77, 255, 0.16);
+  --danger: #e53935;
+
+  /* ---- 代码块 ---- */
+  --code-bg: rgba(15, 17, 26, 0.82);
+  --code-text: #e8eaf6;
+
+  /* ---- 阴影 ---- */
+  --shadow-window: 0 12px 40px rgba(30, 20, 80, 0.28);
+  --shadow-soft: 0 4px 16px rgba(30, 20, 80, 0.16);
+}
+
+/* 深色内容区域（消息区/输入区）使用更实底色，保证可读性 */
+:root[data-contrast="dark"] {
+  --text-primary: #eceef6;
+  --text-secondary: rgba(236, 238, 246, 0.66);
+  --bubble-ai: rgba(30, 32, 48, 0.55);
+  --bubble-ai-text: #eceef6;
+  --code-bg: rgba(5, 6, 12, 0.9);
+  --glass-bg: rgba(18, 20, 34, 0.4);
+  --glass-bg-strong: rgba(24, 27, 44, 0.6);
+  --glass-border: rgba(255, 255, 255, 0.16);
+  --hover: rgba(255, 255, 255, 0.1);
+}

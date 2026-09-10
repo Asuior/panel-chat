@@ -1,0 +1,17 @@
+# Alice 桌面快捷 AI 辅助工具 —— Python 运行依赖
+# 安装：pip install -r requirements.txt
+# （按规格要求：未安装时程序只提示名称，不会自动安装）
+
+pywebview>=6.0.0      # 桌面混合框架（双窗口 / 无边框 / 透明 / 置顶）
+keyboard>=0.13.5      # 全局热键
+pystray>=0.19.5       # 系统托盘
+Pillow>=10.0.0        # pystray 托盘图标绘制
+
+# ---- 可选（插件/开发者用）----
+# requests>=2.31       第三方 HTTP 客户端（内置 example_provider 仅用标准库 urllib）
+
+magicalimport~=0.9.2
+langchain-core~=1.6.2
+langgraph~=1.2.11
+langchain-openai~=1.6.0
+pyyaml~=6.0.3

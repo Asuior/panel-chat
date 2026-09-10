@@ -1,0 +1,7 @@
+{
+  "provider_id": "ModelScope",
+  "name": "ModelScope",
+  "description": "ModelScopeAPI",
+  "enabled": true,
+  "note": "ModelScopeAPI"
+}

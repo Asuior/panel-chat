@@ -1,0 +1,7 @@
+{
+  "provider_id": "deepseek",
+  "name": "DeepSeek",
+  "description": "DeepSeek官方API",
+  "enabled": true,
+  "note": "DeepSeek官方API"
+}

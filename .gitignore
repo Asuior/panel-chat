@@ -1,0 +1,43 @@
+# 运行时生成数据（默认全部忽略，仅保留各目录的 .keep 占位以保证目录结构）
+data/*
+data/conversations/*
+data/backgrounds/*
+data/themes/*
+!data/conversations/.keep
+!data/backgrounds/.keep
+!data/themes/.keep
+!data/settings.json.template
+
+logs/
+.smoke_tmp/
+scripts/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# 编辑器/系统
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# 日志
+*.log
+bug.png
+
+# 主题：仅保留 glassmorphism，其余本地/个人主题不入库
+themes/*
+!themes/glassmorphism/
+
+# 本地/测试用供应商插件不入库
+plugins/mock_provider/
+plugins/example_provider/
+
+# 含秘钥的本地配置不入库（只保留 .example 模板）
+config
+local_README.md
+
