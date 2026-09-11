@@ -48,7 +48,7 @@ PARAMS_SCHEMA: dict[str, dict[str, Any]] = {
     name="ModelScope",
     description="",
     params=PARAMS_SCHEMA,
-    supports_images=False,
+    supports_images=True,
 )
 def chat(messages: list, temperature: float = 0.7, extra_body: dict | None = None) -> str:
     """
