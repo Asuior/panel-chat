@@ -99,6 +99,84 @@
     }
   }
 
+  /* ---------------- 渲染：消息内图片 ---------------- */
+  /* 图片条目可能来自三处：
+       {data: dataURL}   刚发送、尚未落盘
+       {file, url}       已落盘（后端返回的相对路径）
+       "data:..."        旧格式兜底                                        */
+  function imgSrc(im) {
+    if (!im) return '';
+    if (typeof im === 'string') return im.indexOf('data:') === 0 || im.indexOf('assets/') === 0 ? im : '';
+    var src = im.url || im.file || im.data;
+    return typeof src === 'string' ? src : '';
+  }
+
+  function lightbox() {
+    if (!S.lightbox) {
+      var box = document.createElement('div');
+      box.className = 'img-lightbox';
+      box.innerHTML = '<img alt=""><div class="lb-foot"><span class="lb-name"></span>' +
+        '<span class="lb-tip">点击任意处或按 Esc 关闭</span></div>';
+      box.addEventListener('click', closeLightbox);
+      // 挂到 .app 卡片内：圆角内裁剪，不会在透明边缘出现直角遮罩
+      (S.appRoot || document.body).appendChild(box);
+      S.lightbox = box;
+    }
+    return S.lightbox;
+  }
+
+  function openLightbox(src, name) {
+    if (!src) return;
+    var box = lightbox();
+    box.querySelector('img').src = src;
+    box.querySelector('.lb-name').textContent = name || '';
+    box.classList.add('show');
+  }
+
+  function closeLightbox() {
+    if (S.lightbox) S.lightbox.classList.remove('show');
+  }
+
+  function lightboxOpen() {
+    return !!(S.lightbox && S.lightbox.classList.contains('show'));
+  }
+
+  /* 气泡里的图片缩略图（点击放大查看） */
+  function buildMsgImages(msg) {
+    var box = document.createElement('div');
+    var count = Math.min(msg.images.length, 3);
+    box.className = 'bubble-images n' + count;
+    msg.images.forEach(function (im, i) {
+      var src = imgSrc(im);
+      if (!src) return;
+      var thumb = document.createElement('button');
+      thumb.type = 'button';
+      thumb.className = 'bubble-thumb';
+      var name = (im && im.name) || ('图片 ' + (i + 1));
+      thumb.title = name + '（点击放大）';
+      thumb.dataset.src = src;
+      thumb.innerHTML = '<img alt="">';
+      var el = thumb.querySelector('img');
+      el.src = src;
+      // 兜底：相对路径加载失败时（本地子资源受限）改走后端 data URL 通道
+      el.addEventListener('error', function () {
+        var rel = (im && (im.file || im.url)) || '';
+        if (el.dataset.fallback || !rel || rel.indexOf('data:') === 0) return;
+        el.dataset.fallback = '1';
+        AI.call('get_image_data_url', rel).then(function (url) {
+          if (!url) return;
+          el.src = url;
+          thumb.dataset.src = url;
+        }).catch(function (err) { console.warn('[chat] 图片兜底加载失败', err); });
+      });
+      thumb.addEventListener('click', function () {
+        openLightbox(thumb.dataset.src || src, name);
+      });
+      box.appendChild(thumb);
+    });
+    return box.firstChild ? box : null;
+  }
+
   /* ---------------- 渲染：单条消息 ---------------- */
   function buildMsgEl(msg, idx) {
     var role = msg.role === 'user' ? 'user' : 'ai';
@@ -123,6 +201,14 @@
 
     var bubble = document.createElement('div');
     bubble.className = 'bubble';
+    // 图片（本地历史同样保留渲染；发送接口前会由后端过滤掉历史图片）
+    if (msg.images && msg.images.length) {
+      var imgBox = buildMsgImages(msg);
+      if (imgBox) {
+        bubble.classList.add('has-images');
+        bubble.appendChild(imgBox);
+      }
+    }
     var contentEl = document.createElement('div');
     contentEl.className = 'content';
     if (role === 'user') {
@@ -133,6 +219,7 @@
       // 若含错误标记（手动标记）显示为错误色
       if (msg.error) bubble.classList.add('err-bubble');
     }
+    if (!msg.content) contentEl.hidden = true;   // 纯图片消息不显示空文本块
     bubble.appendChild(contentEl);
 
     // ---- 悬停操作栏（消息下方图标）----
@@ -189,6 +276,7 @@
   /* ---------------- 渲染：消息区 ---------------- */
   function renderMessages() {
     var box = S.messages;
+    closeLightbox();   // 重绘时关掉图片预览，避免显示已失效的图
     box.innerHTML = '';
     var conv = state.conv;
     if (!conv || !conv.messages || conv.messages.length === 0) {
@@ -446,23 +534,29 @@
   }
 
   /* ---------------- 发送 / AI 对话 ---------------- */
+  /* 组装请求消息：只带 role/content/images，
+     “哪条消息的图片真正发给 AI”由后端统一过滤
+     （仅最后一条用户消息带图，历史图片降级为纯文本）。 */
   function payloadMessages(msgs) {
     var system = composeSystemPrompt();
-    var attachImages = isMultimodal() && pendingImages.length > 0;
-    var arr = msgs.map(function (m, i) {
-      var content = m.content;
-      // 多模态：给最后一条 user 消息附带图片（OpenAI parts 格式，base64 data URL）
-      if (attachImages && i === msgs.length - 1 && m.role === 'user') {
-        content = [{ type: 'text', text: String(content || '') }].concat(
-          pendingImages.map(function (p) {
-            return { type: 'image_url', image_url: { url: p.url } };
-          })
-        );
-      }
-      return { role: m.role, content: content };
+    var arr = msgs.map(function (m) {
+      var out = { role: m.role, content: m.content };
+      if (m.images && m.images.length) out.images = m.images;
+      return out;
     });
     if (system) arr.unshift({ role: 'system', content: system });
     return arr;
+  }
+
+  /* 保存会话并采用后端返回的消息（图片条目会换成落盘后的相对路径） */
+  async function persistConversation(conv) {
+    var saved = await AI.call('save_conversation', conv.id, conv.messages);
+    // 仅在返回了有效消息时回填，避免异常返回把本地消息清空
+    if (saved && Array.isArray(saved.messages) && saved.messages.length) {
+      conv.messages = saved.messages;
+      if (saved.title) conv.title = saved.title;
+    }
+    return saved;
   }
 
   /* 带超时的 chat 调用：即使后端线程卡死也不会让界面永远“思考中” */
@@ -491,10 +585,18 @@
     // 若编辑流程遗留（防御）
     if (!conv.messages) conv.messages = [];
 
-    var userMsg = { role: 'user', content: text, timestamp: U.nowIso() };
-    conv.messages.push(userMsg);
+    // 立刻把待发图片移入消息并清空托盘（不等 AI 回复）
+    var sentImages = pendingImages.slice();
+    pendingImages = [];
+    renderImgTray();
     S.input.value = '';
     autoGrow();
+
+    var userMsg = { role: 'user', content: text, timestamp: U.nowIso() };
+    if (sentImages.length) {
+      userMsg.images = sentImages.map(function (p) { return { data: p.url, name: p.name }; });
+    }
+    conv.messages.push(userMsg);
     renderMessages();
 
     busy = true;
@@ -506,14 +608,14 @@
                                  state.settings.temperature);
       var aiMsg = { role: 'assistant', content: reply, timestamp: U.nowIso() };
       conv.messages.push(aiMsg);
-      await AI.call('save_conversation', conv.id, conv.messages);
+      await persistConversation(conv);
       await refreshConversations();
       renderHeadInfo();
       renderMessages();
       scrollBottom(false);
     } catch (err) {
       // 保存用户消息（避免丢失），提示错误
-      try { await AI.call('save_conversation', conv.id, conv.messages); } catch (e2) {}
+      try { await persistConversation(conv); } catch (e2) {}
       await refreshConversations();
       renderMessages();
       U.showToast('请求失败：' + err.message, 'error', 5200);
@@ -521,11 +623,6 @@
     } finally {
       busy = false;
       setBusyUI(false);
-      // 图片只随本次请求发送，完成后清空待发队列
-      if (pendingImages.length) {
-        pendingImages = [];
-        renderImgTray();
-      }
       S.input.focus();
     }
   }
@@ -599,9 +696,9 @@
         var reply = await callChat(providerId, payloadMessages(msgs),
                                    state.settings.temperature);
         conv.messages.push({ role: 'assistant', content: reply, timestamp: U.nowIso() });
-        await AI.call('save_conversation', conv.id, conv.messages);
+        await persistConversation(conv);
       } catch (err) {
-        try { await AI.call('save_conversation', conv.id, conv.messages); } catch (e2) {}
+        try { await persistConversation(conv); } catch (e2) {}
         U.showToast('重新生成失败：' + err.message, 'error', 5200);
       } finally {
         busy = false;
@@ -636,9 +733,9 @@
       var reply = await callChat(providerId, payloadMessages(conv.messages),
                                  state.settings.temperature);
       conv.messages.push({ role: 'assistant', content: reply, timestamp: U.nowIso() });
-      await AI.call('save_conversation', conv.id, conv.messages);
+      await persistConversation(conv);
     } catch (err) {
-      try { await AI.call('save_conversation', conv.id, conv.messages); } catch (e2) {}
+      try { await persistConversation(conv); } catch (e2) {}
       U.showToast('重新生成失败：' + err.message, 'error', 5200);
     } finally {
       busy = false;
@@ -976,6 +1073,8 @@
     document.addEventListener('keydown', function (e) {
       // 聊天窗内 Esc 隐藏窗口
       if (e.key === 'Escape') {
+        // 图片放大预览优先：Esc 只关闭预览，不隐藏窗口
+        if (lightboxOpen()) { closeLightbox(); return; }
         var modal = U.$('#settingsModal');
         var cmodal = U.$('#confirmModal');
         if (cmodal && cmodal.classList.contains('show')) return; // 确认框自己处理 Esc

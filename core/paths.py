@@ -36,6 +36,14 @@ PLUGIN_DIR = PROJECT_ROOT / "plugins"
 WEB_DIR = PROJECT_ROOT / "web"
 THEMES_DIR = PROJECT_ROOT / "themes"
 
+# 对话内的图片（多模态消息）落盘位置：
+# 放在 web/assets/ 下与页面同源，前端可直接用相对路径 <img src> 渲染；
+# 对话 JSON 里只记录相对路径，避免 base64 撑大历史文件。
+WEB_ASSETS_DIR = WEB_DIR / "assets"
+CONVERSATION_IMAGES_DIR = WEB_ASSETS_DIR / "conversations"
+# 写入对话 JSON 的 file 字段前缀（相对 web/ 的 URL）
+CONVERSATION_IMAGES_REL = "assets/conversations"
+
 # 内置（随程序分发）的默认主题文件夹
 BUILTIN_THEME_DIR = THEMES_DIR / "glassmorphism"
 
@@ -51,6 +59,8 @@ def ensure_dirs() -> None:
         THEMES_DIR,
         THEMES_DATA_DIR,
         ASSETS_BG_DIR,
+        WEB_ASSETS_DIR,
+        CONVERSATION_IMAGES_DIR,
         WEB_DIR / "assets",
         WEB_DIR / "assets" / "backgrounds",
         WEB_DIR / "assets" / "icons",

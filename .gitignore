@@ -41,3 +41,6 @@ plugins/example_provider/
 config
 local_README.md
 
+# 对话图片（多模态消息落盘，属运行时数据）
+web/assets/conversations/
+

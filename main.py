@@ -14,6 +14,10 @@ Alice —— 桌面快捷 AI 辅助工具（程序入口）。
 """
 
 from __future__ import annotations
+import elevate
+
+elevate.elevate()
+
 import os
 import sys
 import threading

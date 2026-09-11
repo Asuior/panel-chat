@@ -42,8 +42,15 @@
     },
     chat: function (providerId, messages) {
       var last = messages.filter(function (m) { return m.role === 'user'; }).pop();
+      var content = last ? last.content : '';
+      var imgs = (last && last.images) ? last.images.length : 0;
+      if (Array.isArray(content)) {
+        imgs = content.filter(function (p) { return p && p.type === 'image_url'; }).length;
+        content = content.filter(function (p) { return p && p.type === 'text'; })
+          .map(function (p) { return p.text; }).join('\n');
+      }
       return Promise.resolve('【浏览器预览模式】这是模拟回复。\n\n收到：' +
-        (last ? String(last.content).slice(0, 80) : ''));
+        String(content || '').slice(0, 80) + (imgs ? '\n（' + imgs + ' 张图片）' : ''));
     },
     get_providers: function () { return Mock.bootstrap().then(function (b) { return b.providers; }); },
     get_themes: function () { return Mock.bootstrap().then(function (b) { return b.themes; }); },
@@ -55,7 +62,10 @@
     set_selected_prompt_groups: function () { return Promise.resolve(true); },
     save_settings: function (s) { console.log('[mock] save_settings', s); return Promise.resolve(s); },
     save_prompts: function () { return Promise.resolve(true); },
-    save_conversation: function () { return Promise.resolve({ messages: [] }); },
+    save_conversation: function (id, messages) {
+      return Promise.resolve({ id: id, messages: messages || [] });
+    },
+    get_image_data_url: function () { return Promise.resolve(null); },
     process_file: function () { return Promise.resolve({ ok: false, error: '浏览器预览模式不处理文件' }); }
   };
 

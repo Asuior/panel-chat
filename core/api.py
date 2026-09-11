@@ -19,6 +19,7 @@ import time
 from pathlib import Path
 from typing import Any, Callable
 
+from core.chat_payload import build_chat_payload, summary as payload_summary  # 发送前的消息过滤/组装
 from core.file_processor import FileProcessor  # 用于 process_file 内部编排
 from core.logger import get_logger
 from core.paths import THEMES_DIR, WEB_DIR
@@ -106,6 +107,13 @@ class Api:
         self._settings.set("multimodal", overrides)
         return True
 
+    def _multimodal_enabled(self, provider_id: str) -> bool:
+        """当前接口是否允许图片输入（插件能力 + 用户开关）。"""
+        provider = self._plugins.get_provider(provider_id) or {}
+        supported = bool(provider.get("supports_images", False))
+        override = (self._settings.get("multimodal") or {}).get(provider_id)
+        return override if isinstance(override, bool) else supported
+
     def _extra_body(self, provider_id: str) -> dict:
         """
         计算传给插件 chat() 的 extra_body。
@@ -130,13 +138,35 @@ class Api:
         return stored
 
     def chat(self, provider_id: str, messages: list, temperature: float = 0.7) -> str:
-        """发送对话请求（messages 含 role/content），返回 AI 回复文本。"""
+        """
+        发送对话请求（messages 含 role/content，可携带 images），返回 AI 回复文本。
+
+        发送前统一过滤（见 core/chat_payload.build_chat_payload）：
+            · 只把 messages 中“最后一条用户消息”的图片组装成多模态 parts；
+            · 历史消息里的图片一律丢弃，只保留文本，避免占用上下文；
+            · 接口未开启多模态时，所有图片都被丢弃；
+            · 只输出 role/content，本地字段（timestamp/images）不外传。
+
+        注意：本地对话记录里仍完整保留图片，前端用消息里的 images
+        字段渲染（这是展示用的，与本次请求无关）。
+        """
         if not provider_id:
             provider_id = self._settings.get("provider") or "mock"
         # 记住用户的选择
         self._settings.set("provider", provider_id)
+        payload = build_chat_payload(
+            messages,
+            allow_images=self._multimodal_enabled(provider_id),
+            resolver=getattr(self._conversations, "entry_to_data_url", None),
+        )
+        stats = payload_summary(payload)
+        if stats["images"]:
+            log.info(
+                "多模态请求：本次携带 %d 张图片（历史图片已过滤，消息数=%d）",
+                stats["images"], stats["messages"],
+            )
         return self._plugins.chat(
-            provider_id, messages, temperature, extra_body=self._extra_body(provider_id)
+            provider_id, payload, temperature, extra_body=self._extra_body(provider_id)
         )
 
     # ------------------------------------------------------------------ #
@@ -152,6 +182,19 @@ class Api:
         if conv is None:
             raise RuntimeError("会话不存在或已被删除。")
         return conv
+
+    def get_image_data_url(self, rel_path: str) -> str:
+        """
+        把对话图片（消息里的相对路径）读成 base64 data URL。
+
+        正常渲染走相对路径与页面同源，无需经过这里；
+        这是 <img> 加载失败（如运行环境限制本地子资源）时的兜底通道。
+        """
+        getter = getattr(self._conversations, "entry_to_data_url", None)
+        url = getter({"file": rel_path}) if getter else None
+        if not url:
+            raise RuntimeError("图片不存在或无法读取。")
+        return url
 
     def save_conversation(self, conv_id: str, messages: list) -> dict:
         """保存会话全部消息（自动维护索引与标题）。"""
