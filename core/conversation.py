@@ -224,6 +224,13 @@ class ConversationManager:
             entry: dict[str, Any] = {"file": rel}
             if name:
                 entry["name"] = name
+            # 记录原始宽高：前端渲染时据此先占位，图片解码完成后
+            # 不会再撑高消息区（否则滚动会「停在半路」）
+            if isinstance(item, dict):
+                for key in ("w", "h"):
+                    value = item.get(key)
+                    if isinstance(value, (int, float)) and value > 0:
+                        entry[key] = int(value)
             entries.append(entry)
         return entries
 

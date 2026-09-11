@@ -143,18 +143,28 @@
 
   /* 气泡里的图片缩略图（点击放大查看） */
   function buildMsgImages(msg) {
+    var list = (msg.images || []).map(function (im) {
+      return { im: im, src: imgSrc(im) };
+    }).filter(function (it) { return !!it.src; });
+    if (!list.length) return null;
+
     var box = document.createElement('div');
-    var count = Math.min(msg.images.length, 3);
-    box.className = 'bubble-images n' + count;
-    msg.images.forEach(function (im, i) {
-      var src = imgSrc(im);
-      if (!src) return;
+    box.className = 'bubble-images n' + Math.min(list.length, 3);
+    var single = list.length === 1;   // 单图按原比例显示，多图统一裁成方格
+    list.forEach(function (it, i) {
+      var im = it.im;
+      var src = it.src;
       var thumb = document.createElement('button');
       thumb.type = 'button';
       thumb.className = 'bubble-thumb';
       var name = (im && im.name) || ('图片 ' + (i + 1));
       thumb.title = name + '（点击放大）';
       thumb.dataset.src = src;
+      // 已知宽高时先按比例占位：图片解码完成后不会再撑高消息区
+      if (single && im && im.w > 0 && im.h > 0) {
+        var ratio = im.w / im.h;
+        thumb.style.aspectRatio = String(Math.min(Math.max(ratio, 0.6), 2.2));
+      }
       thumb.innerHTML = '<img alt="">';
       var el = thumb.querySelector('img');
       el.src = src;
@@ -174,7 +184,7 @@
       });
       box.appendChild(thumb);
     });
-    return box.firstChild ? box : null;
+    return box;
   }
 
   /* ---------------- 渲染：单条消息 ---------------- */
@@ -483,6 +493,16 @@
     });
   }
 
+  /* 读取图片宽高：用于渲染时提前占位，避免图片解码后把消息区撑高（滚动会停在半路） */
+  function measureImage(url) {
+    return new Promise(function (resolve) {
+      var im = new Image();
+      im.onload = function () { resolve({ w: im.naturalWidth || 0, h: im.naturalHeight || 0 }); };
+      im.onerror = function () { resolve({ w: 0, h: 0 }); };
+      im.src = url;
+    });
+  }
+
   function addImageFiles(fileList) {
     var files = Array.prototype.filter.call(fileList || [], function (f) {
       return f && /^image\//.test(f.type);
@@ -501,7 +521,9 @@
           return;
         }
         return readImageAsDataURL(f).then(function (url) {
-          pendingImages.push({ url: url, name: f.name });
+          return measureImage(url).then(function (size) {
+            pendingImages.push({ url: url, name: f.name, w: size.w, h: size.h });
+          });
         });
       });
     });
@@ -526,11 +548,64 @@
     });
   }
 
+  /* 把消息区吸到底部。
+     注意：气泡里的图片是异步解码的，解码完成前缩略图高度为 0，
+     只滚一次等于「滚到当时的内容底部」，图片撑高后就停在半路了。
+     因此滚完后再补一次吸附（图片加载完成 / 短延时兜底）。 */
+  var smoothScrollUntil = 0;   // 平滑滚动窗口：窗口内不强行跳到底，避免打断动画
+
   function scrollBottom(smooth) {
     var box = S.messages;
+    smoothScrollUntil = smooth ? Date.now() + 450 : 0;
     requestAnimationFrame(function () {
       box.scrollTo({ top: box.scrollHeight, behavior: smooth ? 'smooth' : 'auto' });
     });
+    settleScroll(box);
+  }
+
+  /* 内容仍在长高时补一次吸底（已经在底部就不动） */
+  function pinToBottom(retry) {
+    retry = retry || 0;
+    if (Date.now() < smoothScrollUntil && retry < 4) {
+      setTimeout(function () {
+        requestAnimationFrame(function () { pinToBottom(retry + 1); });
+      }, 180);
+      return;
+    }
+    var box = S.messages;
+    if (box.scrollHeight - box.scrollTop - box.clientHeight > 2) {
+      box.scrollTo({ top: box.scrollHeight, behavior: 'auto' });
+    }
+  }
+
+  /* 是否基本贴底（用于「迟到的高度变化」：只有本来就在底部才继续贴底，
+     用户在往上翻历史时不会被强行拉回） */
+  function nearBottom() {
+    var box = S.messages;
+    return box.scrollHeight - box.scrollTop - box.clientHeight <= 120;
+  }
+
+  /* 等图片解码完（或超时兜底）再补一次吸底 */
+  function settleScroll(box) {
+    var pending = Array.prototype.filter.call(box.querySelectorAll('img'), function (im) {
+      return !im.complete;
+    });
+    var timer = null;
+    function done() {
+      if (timer) { clearTimeout(timer); timer = null; }
+      requestAnimationFrame(function () { pinToBottom(0); });
+    }
+    if (pending.length) {
+      var left = pending.length;
+      pending.forEach(function (im) {
+        var one = function () { if (--left <= 0) done(); };
+        im.addEventListener('load', one, { once: true });
+        im.addEventListener('error', one, { once: true });
+      });
+      timer = setTimeout(done, 1500);   // 兜底：个别图片卡住也要吸底
+    } else {
+      setTimeout(done, 60);
+    }
   }
 
   /* ---------------- 发送 / AI 对话 ---------------- */
@@ -594,7 +669,9 @@
 
     var userMsg = { role: 'user', content: text, timestamp: U.nowIso() };
     if (sentImages.length) {
-      userMsg.images = sentImages.map(function (p) { return { data: p.url, name: p.name }; });
+      userMsg.images = sentImages.map(function (p) {
+        return { data: p.url, name: p.name, w: p.w, h: p.h };
+      });
     }
     conv.messages.push(userMsg);
     renderMessages();
@@ -1068,6 +1145,12 @@
       var codeEl = btn.closest('pre').querySelector('code');
       if (codeEl) copyText(codeEl.textContent);
     });
+
+    // 图片解码完成（load 不冒泡，用捕获阶段在容器上统一接住）后，
+    // 若本来就在底部，就继续贴底 —— 兜住任何「迟到的高度变化」
+    S.messages.addEventListener('load', function () {
+      if (nearBottom()) pinToBottom(0);
+    }, true);
 
     // 窗口状态恢复后确保（后端已推送事件）
     document.addEventListener('keydown', function (e) {
