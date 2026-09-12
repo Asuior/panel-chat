@@ -13,8 +13,8 @@ from langchain_core.tools import InjectedToolCallId, tool
 from langgraph.prebuilt import InjectedState
 from langgraph.types import Command
 
-from plugins.deepseek.skill_loader import list_skills as _list_skills
-from plugins.deepseek.skill_loader  import load_skill as _load_skill
+from plugins.ModelScope.skill_loader import list_skills as _list_skills
+from plugins.ModelScope.skill_loader  import load_skill as _load_skill
 
 
 @tool

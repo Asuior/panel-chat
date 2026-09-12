@@ -8,9 +8,9 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.prebuilt import ToolNode, tools_condition
 from typing_extensions import TypedDict
 
-from plugins.deepseek.skill_loader import load_skill as get_skill
-from plugins.deepseek.tools.loader import import_tools
-from plugins.deepseek.tools.tools_98es7d5.skill_tools import list_skills, load_skill
+from plugins.ModelScope.skill_loader import load_skill as get_skill
+from plugins.ModelScope.tools.loader import import_tools
+from plugins.ModelScope.tools.tools_98es7d5.skill_tools import list_skills, load_skill
 
 
 class GraphState(TypedDict):

@@ -44,3 +44,13 @@ local_README.md
 # 对话图片（多模态消息落盘，属运行时数据）
 web/assets/conversations/
 
+#python环境
+python/
+
+
+#打包文件
+entry.py
+launcher.*
+dist/
+build/
+
