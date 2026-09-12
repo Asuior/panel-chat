@@ -76,7 +76,8 @@ class Api:
         """
         返回所有已注册的 AI 接口列表。每个 provider 额外带：
           · multimodal_supported —— 插件声明的图片能力；
-          · multimodal —— 当前是否“允许图片输入”（用户可在设置里覆盖关闭）。
+          · multimodal —— 当前是否“允许图片输入”（用户可在设置里覆盖关闭）；
+          · welcome_html —— 插件声明的自定义欢迎页 HTML（空串 = 用内置默认）。
         """
         providers = self._plugins.get_providers()
         overrides = self._settings.get("multimodal") or {}
@@ -97,6 +98,8 @@ class Api:
                 "params": p.get("params", {}),
                 "multimodal_supported": supported,
                 "multimodal": effective,
+                # 空串 / 缺失都表示“该接口没有自定义欢迎词”，前端回落到内置默认
+                "welcome_html": p.get("welcome_html", "") or "",
             })
         return enriched
 

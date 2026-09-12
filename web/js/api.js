@@ -31,7 +31,12 @@
         },
         providers: [
           { id: 'mock', name: '本地模拟（离线测试）', description: '浏览器预览用假数据',
-            params: {}, multimodal_supported: true, multimodal: true }
+            params: {}, multimodal_supported: true, multimodal: true,
+            // 演示：接口自定义欢迎页（真实插件在 register_ai_provider(welcome_html=...) 里提供）。
+            // 注意不含头像位：.big 由程序渲染，不属于 welcome_html 的范围。
+            welcome_html: '<h2>你好，我是浏览器预览用的模拟接口</h2>' +
+              '<p>· 这是接口自定义的欢迎词<br>· 切换到没有欢迎词的接口即回落到默认欢迎词</p>' +
+              '<div class="chips"><button class="btn" data-tab="ai">选择 AI 接口</button></div>' }
         ],
         themes: [{ id: 'glassmorphism', name: '毛玻璃 · 默认', css_url: '', description: '' }],
         conversations: [],

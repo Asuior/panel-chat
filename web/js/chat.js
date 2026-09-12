@@ -300,15 +300,23 @@
     // 委托：代码块复制
   }
 
-  function buildWelcome() {
-    var w = document.createElement('div');
-    w.className = 'welcome';
+  /* 欢迎页的「头像位」——始终由程序渲染，跟随 设置 → 外观 里的 AI 头像。
+     它**不属于 welcome_html 的范围**：插件自定义欢迎页只能替换头像以下的内容，
+     既不能替换、也不能去掉这个头像位（否则插件 HTML 一改，头像就丢了）。 */
+  function buildWelcomeAvatar() {
     // 大圆 = AI 头像：有自定义头像时显示图片，否则保持默认“蓝球”渐变
     var a = (state.settings && state.settings.assistant) || {};
-    var bigInner = (a.avatar && a.avatar.indexOf('data:') === 0)
-      ? '<img src="' + a.avatar + '" alt="">' : '';
-    w.innerHTML =
-      '<div class="big">' + bigInner + '</div><h2>你好，我是你的 AI 助手</h2>' +
+    var big = document.createElement('div');
+    big.className = 'big';
+    if (a.avatar && a.avatar.indexOf('data:') === 0) {
+      big.innerHTML = '<img src="' + a.avatar + '" alt="">';
+    }
+    return big;
+  }
+
+  /* 内置默认欢迎内容（不含头像位） */
+  function defaultWelcomeContentHtml() {
+    return '<h2>你好，我是你的 AI 助手</h2>' +
       '<p>· 拖拽文件到悬浮球，AI 处理并写回原文件<br>' +
       '· 消息可编辑：修改最新提问将自动重新生成<br>' +
       '· 消息可删除：其后内容一并截断<br>' +
@@ -317,10 +325,53 @@
       '<button class="btn" data-tab="ai">选择 AI 接口</button>' +
       '<button class="btn" data-tab="prompts">管理系统提示词</button>' +
       '</div>';
-    U.$$('button', w).forEach(function (b) {
+  }
+
+  /* 当前接口自定义的欢迎词；未提供（或只有空白）时返回空串表示“用默认” */
+  function providerWelcomeHtml() {
+    var p = currentProvider();
+    var html = p && p.welcome_html;
+    return (typeof html === 'string' && html.trim()) ? html : '';
+  }
+
+  function buildWelcome() {
+    var w = document.createElement('div');
+    // 容器始终是 .welcome（保留居中布局与主题变量）；
+    // 用接口自定义欢迎词时额外加 .custom，便于主题单独定制 .welcome.custom
+    w.className = 'welcome';
+    // 1) 先放头像位（程序渲染，与 welcome_html 无关）
+    w.appendChild(buildWelcomeAvatar());
+    // 2) 再放内容：接口提供了自定义欢迎词就用它，否则回落到内置默认
+    var custom = providerWelcomeHtml();
+    var holder = document.createElement('div');
+    if (custom) {
+      holder.innerHTML = custom;
+      w.classList.add('custom');
+    } else {
+      holder.innerHTML = defaultWelcomeContentHtml();
+    }
+    // 把内容节点逐个搬进 .welcome（保持 h2 / p / .chips 与头像同级，
+    // 这样 .welcome 的 flex + gap 布局不用改），holder 本身不入 DOM
+    while (holder.firstChild) w.appendChild(holder.firstChild);
+    // 约定：带 data-tab="ai|prompts|appearance|..." 的元素 = 跳转对应设置页签。
+    // 默认欢迎词与插件自定义欢迎词共用这套绑定，插件无需自己写事件。
+    U.$$('[data-tab]', w).forEach(function (b) {
       b.addEventListener('click', function () { openSettingsTab(b.getAttribute('data-tab')); });
     });
     return w;
+  }
+
+  /* 切换 AI 接口后同步欢迎词。
+     只做“原地替换欢迎页节点”：
+       · 当前会话有消息（非欢迎态）→ 什么都不做，不重绘已有消息、不重置滚动位置；
+       · 当前是欢迎态 → 用新接口的欢迎页节点换掉旧的，其余 DOM 一概不碰。 */
+  function refreshWelcome() {
+    if (!S.messages || !state) return;
+    var conv = state.conv;
+    if (conv && conv.messages && conv.messages.length) return;
+    var old = S.messages.querySelector('.welcome');
+    if (!old) return;   // 消息区里没有欢迎页节点，说明当前不是欢迎态
+    S.messages.replaceChild(buildWelcome(), old);
   }
 
   /* ---------------- 渲染：会话列表 ---------------- */
@@ -976,14 +1027,29 @@
         state.settings.provider = d.id;
         renderProviderSelect();
         renderHeadInfo();
+        refreshWelcome();   // 托盘切换接口：欢迎态下原地换欢迎页
       }
     });
   }
 
   /* ---------------- UI 信息刷新 ---------------- */
+  /* 消息区 DOM 只依赖「消息列表 + 用户/AI 的名称与头像」。
+     记下上一次渲染用的这组身份信息，用来判断某次设置变更是否真的需要重绘消息：
+     只有身份变了才整体重绘（气泡头像/名称要跟着变），
+     其余设置（例如切换 AI 接口）只原地换欢迎页，不重绘消息、不动滚动位置。 */
+  var lastIdentity = '';
+
+  function identityKey(settings) {
+    var u = (settings && settings.user) || {};
+    var a = (settings && settings.assistant) || {};
+    return [u.name, u.avatar, a.name, a.avatar].join('\u0001');
+  }
+
   /* 用户与 AI 的名称/头像变更后，统一刷新所有展示位：
-     侧边栏底部（用户）、侧边栏左上角品牌（AI logo+名称）、消息气泡与欢迎页 */
-  function refreshUserInfo() {
+     侧边栏底部（用户）、侧边栏左上角品牌（AI logo+名称）、消息气泡与欢迎页。
+     :param skipMessages: true 时不重绘消息区，只原地刷新欢迎页
+       （用于切换 AI 接口等与消息内容无关的设置变更）。 */
+  function refreshUserInfo(skipMessages) {
     if (!state.settings) return;
     var u = state.settings.user || {};
     var a = state.settings.assistant || {};
@@ -998,7 +1064,12 @@
     // AI：侧边栏左上角品牌（蓝球 → AI 头像，Alice AI → AI 名称）
     if (S.brandName) S.brandName.textContent = a.name || 'AI 助手';
     setAvatarVisual(S.brandLogo, a.avatar);
-    renderMessages(); // 消息气泡头像/名称 + 欢迎页大球随之刷新
+    if (skipMessages) {
+      refreshWelcome();            // 只换欢迎页节点，消息区与滚动位置不动
+    } else {
+      renderMessages();            // 消息气泡头像/名称 + 欢迎页大球随之刷新
+    }
+    lastIdentity = identityKey(state.settings);
   }
 
   /* ---------------- 初始化 ---------------- */
@@ -1023,7 +1094,10 @@
         state.settings = settings;
         renderProviderSelect();
         renderHeadInfo();
-        refreshUserInfo();
+        // 用户/AI 名称或头像变了 → 整体重绘消息；否则（例如切换 AI 接口）
+        // 只原地替换欢迎页，不重绘已有消息、不重置滚动位置。
+        var identityChanged = identityKey(settings) !== lastIdentity;
+        refreshUserInfo(!identityChanged);
         applySidebar(settings.sidebar_visible !== false);
       },
       updateProviders: function (providers) {
@@ -1134,6 +1208,7 @@
         state.settings = all;
         renderHeadInfo();
         applyComposerMode();   // 接口能力可能变化：刷新多模态输入区并清理图片
+        refreshWelcome();      // 头部下拉切换接口：欢迎态下原地换欢迎页
         U.showToast('AI 接口：' + providerName(id), 'success', 1500);
       }).catch(function (err) { U.showToast(err.message, 'error'); });
     });

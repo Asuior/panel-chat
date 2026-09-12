@@ -42,6 +42,25 @@ PARAMS_SCHEMA: dict[str, dict[str, Any]] = {
     },
 }
 
+# 该接口专属的“空对话欢迎页”（可选能力的用法演示）。
+# 提供 welcome_html 后：聊天窗在没有任何消息时用它替换内置默认欢迎词；
+# 切换到未提供 welcome_html 的接口（如 ModelScope）会自动回落为内置默认。
+# 注意：欢迎页顶部的头像位（.big）由程序渲染、跟随“设置 → 外观”的 AI 头像，
+# 不属于 welcome_html 的范围，所以这里不要自己写 .big；
+# 内容部分可复用内置类 h2 / p / .chips 以继承同样的样式，
+# 其中带 data-tab="ai|prompts|..." 的按钮由前端自动绑定为“跳转对应设置页签”。
+WELCOME_HTML = """
+<h2>你好，我是 DeepSeek 助手</h2>
+<p>· 拖拽文件到悬浮球，AI 处理并写回原文件<br>
+· 消息可编辑：修改最新提问将自动重新生成<br>
+· 消息可删除：其后内容一并截断<br>
+· 支持 Markdown 与代码高亮</p>
+<div class="chips">
+<button class="btn" data-tab="ai">选择 AI 接口</button>
+<button class="btn" data-tab="prompts">管理系统提示词</button>
+</div>
+""".strip()
+
 
 @register_ai_provider(
     provider_id="deepseek",
@@ -49,6 +68,7 @@ PARAMS_SCHEMA: dict[str, dict[str, Any]] = {
     description="不",
     params=PARAMS_SCHEMA,
     supports_images=False,
+    welcome_html=WELCOME_HTML,
 )
 def chat(messages: list, temperature: float = 0.7, extra_body: dict | None = None) -> str:
     """

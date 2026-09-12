@@ -54,6 +54,7 @@ def register_ai_provider(
     description: str = "",
     params: dict[str, dict[str, Any]] | None = None,
     supports_images: bool = False,
+    welcome_html: str = "",
 ):
     """
     装饰器：把一个函数注册为 AI provider。
@@ -69,6 +70,21 @@ def register_ai_provider(
                 {"type":"text","text":"..."},
                 {"type":"image_url","image_url":{"url":"data:image/png;base64,..."}}
             ]}
+    :param welcome_html: 可选；该接口专属的“空会话欢迎页”HTML 片段。
+        · 生效范围：只在当前会话没有任何消息时显示，该替换只作用于欢迎页内容
+          （外层 .welcome 容器保留，因此自动沿用居中布局与主题变量；
+          自定义时容器额外带 .custom，可写 .welcome.custom 单独定制）；
+        · **不含头像位**：欢迎页顶部的 .big 头像由程序渲染、跟随
+          “设置 → 外观”的 AI 头像，不属于本参数的范围，请不要自己写 .big；
+        · 回落规则：留空（默认）则该接口继续使用内置默认欢迎词；
+        · 切换行为：无论从托盘菜单、聊天窗头部下拉还是“设置 → AI 接口”切换，
+          欢迎页都会随之原地替换；已有消息的会话不受影响
+          （不重绘消息、不重置滚动位置）；
+        · 可交互：片段里带 data-tab="ai|prompts|..." 的元素会自动绑定为
+          “跳转到对应设置页签”的按钮；
+        · 安全：片段以 innerHTML 原样注入本地窗口（<script> 不执行，但内联
+          事件属性如 onclick 会生效）。插件本就是本机可执行代码，不构成额外
+          的信任边界，但请勿拼接来自网络或用户输入的内容。
     """
     def decorator(func: Callable) -> Callable:
         with _registry_lock:
@@ -78,6 +94,8 @@ def register_ai_provider(
                 "description": description,
                 "params": dict(params or {}),
                 "supports_images": bool(supports_images),
+                # 统一去掉首尾空白：空串 / 纯空白都表示“该接口没有自定义欢迎词”
+                "welcome_html": str(welcome_html or "").strip(),
                 "chat": func,
                 "module": func.__module__,
             }
@@ -147,7 +165,7 @@ class PluginManager:
 
     # ------------------------------------------------------------------ #
     def get_providers(self) -> list[dict]:
-        """返回全部已注册 provider 列表（含参数描述与图片能力声明）。"""
+        """返回全部已注册 provider 列表（含参数描述、图片能力与欢迎页声明）。"""
         with _registry_lock:
             return [
                 {
@@ -156,6 +174,7 @@ class PluginManager:
                     "description": p.get("description", ""),
                     "params": p.get("params", {}),
                     "supports_images": p.get("supports_images", False),
+                    "welcome_html": p.get("welcome_html", "") or "",
                 }
                 for p in _registry.values()
             ]

@@ -47,17 +47,10 @@
       </header>
 
       <div class="messages" id="messages">
-        <div class="welcome" id="welcome">
-          <div class="big"></div>
-          <h2>你好，我是你的 AI 助手</h2>
-          <p>· 拖拽任意文件到悬浮球，自动 AI 处理并写回<br>
-             · 消息可「编辑 / 删除」：修改最新提问将自动重新生成回答<br>
-             · 支持 Markdown，代码块可一键复制</p>
-          <div class="chips">
-            <button class="btn" data-quick="设置 AI 接口">选择 AI 接口</button>
-            <button class="btn" data-quick="管理系统提示词">管理系统提示词</button>
-          </div>
-        </div>
+        <!-- 欢迎页由 chat.js 的 buildWelcome() 渲染：
+             接口（插件）注册时提供了 welcome_html 就用它，否则用内置默认。
+             这里不再写静态欢迎词，避免 bootstrap 返回前先闪一版「默认欢迎词」
+             （接口自定义的欢迎词会在 init 后立刻替换上来）。 -->
       </div>
 
       <!-- 输入区 -->
