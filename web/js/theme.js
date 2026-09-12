@@ -30,10 +30,18 @@
       body.style.removeProperty('--bg-url');
       return;
     }
-    // 路径为 web/ 相对路径（assets/backgrounds/xxx.png）或绝对路径
+    // 路径为 web/ 相对路径（assets/backgrounds/xxx.png）或绝对路径。
+    //
+    // 必须转成**绝对 URL**：--bg-url 的 var() 消费点在 web/css/base.css 里，
+    // 而 CSS 中的相对 url() 是相对**样式表自身**解析的，不是相对文档 ——
+    // 直接塞 "assets/backgrounds/x.png" 会被解析成 web/css/assets/... 从而
+    // 404：背景层什么也不画（连内置渐变也不会退回，因为 background-image
+    // 已经被替换掉了），表现就是「设置了背景图却毫无变化」。
     var url = String(bgPath).replace(/\\/g, '/');
-    if (!/^(https?:|file:)/i.test(url) && url.charAt(0) !== '/') {
-      url = './' + url.replace(/^\.\//, '');
+    try {
+      url = new URL(url, document.baseURI).href;
+    } catch (e) {
+      console.warn('[theme] 背景图 URL 解析失败，按原样使用：', url);
     }
     body.style.setProperty('--bg-url', 'url("' + url + '")');
     body.classList.add('bg-image');

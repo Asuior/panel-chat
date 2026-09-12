@@ -20,7 +20,6 @@ from pathlib import Path
 from typing import Any, Callable
 
 from core.chat_payload import build_chat_payload, summary as payload_summary  # 发送前的消息过滤/组装
-from core.file_processor import FileProcessor  # 用于 process_file 内部编排
 from core.logger import get_logger
 from core.paths import THEMES_DIR, WEB_DIR
 from core.plugin_manager import PluginManager
@@ -43,7 +42,6 @@ class Api:
     :param conversations: ConversationManager
     :param plugins: PluginManager
     :param window_ops: 可选；提供 show/hide/move/... 的可调用对象（由 main 注入）
-    :param file_processor: FileProcessor
     """
 
     def __init__(
@@ -336,32 +334,10 @@ class Api:
             raise RuntimeError(f"保存图片失败：{exc}") from exc
 
     # ------------------------------------------------------------------ #
-    # 5) 文件处理（悬浮球拖拽）
-    # ------------------------------------------------------------------ #
-    def process_file(self, file_path: str, provider_id: str = "", temperature: float = -1.0) -> dict:
-        """处理单个文件：读取 → AI → 写回。返回结果字典。"""
-        if provider_id:
-            self._settings.set("provider", provider_id)
-        provider = self._settings.get("provider")
-        temp = self._settings.get("temperature", 0.7) if temperature < 0 else temperature
-
-        def _chat(messages, t):
-            return self._plugins.chat(
-                provider, messages, t, extra_body=self._extra_body(provider)
-            )
-
-        proc = FileProcessor(
-            chat_callable=_chat,
-            compose_system=lambda: self.compose_system_prompt(),
-            config_provider=lambda: self._settings.get("file_processing") or {},
-        )
-        return proc.process(file_path, temp)
-
-    # ------------------------------------------------------------------ #
-    # 6) 窗口控制（快捷键 / 悬浮球交互）
+    # 5) 窗口控制（托盘 / 全局热键 / 前端交互）
     # ------------------------------------------------------------------ #
     def show_window(self, window_id: str) -> bool:
-        """显示并聚焦指定窗口（window_id: ball | chat）。"""
+        """显示并聚焦指定窗口（window_id: chat）。"""
         self._require_window().show(window_id)
         return True
 
@@ -396,18 +372,16 @@ class Api:
 
     def refresh_window_transparency(self, window_id: str) -> bool:
         """
-        resize 后 WebView2 偶发丢失透明背景（整窗变白底直角）。
-        前端在调整大小结束后调用，重新声明透明背景并强制重绘。
-        """
-        log.info("前端请求透明恢复: %s", window_id)
-        return self._require_window().refresh_transparency(window_id)
+        兼容旧前端调用的空实现。
 
-    def set_ball_light_effect(self, enabled: bool) -> bool:
-        self._settings.set("ball_light_effect", bool(enabled))
+        窗口现在是不透明的，磨砂玻璃由页面内 CSS 实现，缩放不会再丢失合成，
+        因此无需任何恢复动作。保留此方法只为避免旧版前端调用时报错。
+        """
+        log.debug("refresh_window_transparency 已废弃（窗口不透明）: %s", window_id)
         return True
 
     # ------------------------------------------------------------------ #
-    # 7) 启动引导
+    # 6) 启动引导
     # ------------------------------------------------------------------ #
     def bootstrap(self) -> dict:
         """

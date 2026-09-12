@@ -5,9 +5,11 @@
 职责：
     * 首次运行时以默认值创建 data/settings.json；
     * 提供线程安全的 get / update / save；
-    * 记忆悬浮球 / 悬浮窗位置、所选 AI 接口、主题、用户名/头像等。
+    * 记忆对话窗口位置与尺寸、所选 AI 接口、主题、用户名/头像等。
 
 所有字段均有默认值，新增字段不会导致旧文件读取失败（做深合并）。
+旧版本遗留的键（ball / ball_light_effect / file_processing / hotkeys.toggle_ball）
+会因深合并被保留在文件里，但已无任何代码读取，无害。
 """
 from __future__ import annotations
 
@@ -25,26 +27,26 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "version": 1,
     "sidebar_visible": True,             # 聊天窗左侧会话栏是否展开
     # ---- 窗口 ----
-    "ball": {
-        "size": 70,                     # 悬浮球直径（px）
-        "x": None,                      # None = 使用默认位置（屏幕右下）
-        "y": None,
-    },
-    # 悬浮窗：始终置顶，无“取消置顶”开关（工具窗口没有任务栏入口，
+    # 始终置顶，无“取消置顶”开关（工具窗口没有任务栏入口，
     # 一旦取消置顶 + 显示桌面就找不到窗口了）
     "chat": {
-        "width": 420,                   # 默认 420x700（规格说明）
+        "width": 500,                   # 默认 500x700（不得小于 min_width/min_height）
         "height": 700,
-        "min_width": 500,               # 规格：最小 500x600
+        "min_width": 500,
         "min_height": 600,
         "x": None,
         "y": None,
     },
     # ---- 全局热键（keyboard 库语法）----
     "hotkeys": {
-        "toggle_ball": "ctrl+alt+q",
         "toggle_chat": "ctrl+alt+w",
     },
+    # ---- 启动行为 ----
+    # True = 静默启动（窗口默认隐藏，靠托盘/热键唤出），便于开机自启；
+    # 首次运行（尚无 settings.json）时会忽略此项并显示一次窗口。
+    "start_hidden": True,
+    # 窗口圆角（Windows 11 DWM 系统圆角；Win10 上无效，自动忽略）
+    "round_corners": True,
     # ---- AI 接口 ----
     "provider": "mock",                 # 当前选中的 provider id
     "temperature": 0.7,
@@ -58,17 +60,6 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "use_background_blur": True,
     "user": {"name": "我", "avatar": None},   # avatar: "default" 或 data url / 文件 url
     "assistant": {"name": "AI 助手", "avatar": None},
-    # ---- 悬浮球 ----
-    "ball_light_effect": True,          # 按时段自动切换的光效
-    # ---- 文件处理 ----
-    "file_processing": {
-        "mode": "overwrite",            # overwrite | append
-        "instruction": (
-            "请阅读下面提供的文件内容，直接输出优化后的完整文件内容。"
-            "不要添加额外解释，不要使用 Markdown 代码块包裹，保持原格式。"
-        ),
-        "max_chars": 80000,             # 超过此字符数拒绝读取，避免撑爆上下文
-    },
     # ---- 其它 ----
     "auto_launch": False,               # 开机自启（预留，后续实现）
 }
@@ -92,6 +83,9 @@ class SettingsManager:
         self._file = file_path or SETTINGS_FILE
         self._lock = threading.RLock()
         self._data: dict[str, Any] = {}
+        # 首次运行标记：加载前先看文件是否存在。
+        # main 用它决定启动时是否显示一次窗口（全新用户不该面对一个隐形程序）。
+        self.first_run = not self._file.exists()
         self.load()
 
     # ---------- 读取 ----------
@@ -157,8 +151,8 @@ class SettingsManager:
 
     # ---------- 便捷方法 ----------
     def remember_window_position(self, window_id: str, x: int, y: int) -> None:
-        """记忆窗口位置（window_id: ball | chat）。"""
-        if window_id in ("ball", "chat"):
+        """记忆窗口位置（window_id: chat）。"""
+        if window_id == "chat":
             self.set(f"{window_id}.x", int(x))
             self.set(f"{window_id}.y", int(y))
 
@@ -166,14 +160,13 @@ class SettingsManager:
                                  width: int | None = None,
                                  height: int | None = None) -> None:
         """
-        记忆窗口几何：位置总是记录；chat 窗口尺寸可调整，额外记录宽高。
-        （悬浮球尺寸由 ball.size 决定，不记录宽高。）
+        记忆窗口几何：位置总是记录；对话窗口尺寸可调整，额外记录宽高。
         合并成一次写入，只落盘一次。
         """
-        if window_id not in ("ball", "chat"):
+        if window_id != "chat":
             return
         node: dict[str, Any] = {"x": int(x), "y": int(y)}
-        if window_id == "chat" and width and height:
+        if width and height:
             node["width"] = int(width)
             node["height"] = int(height)
         self.update({window_id: node})
@@ -183,5 +176,5 @@ class SettingsManager:
         return self.get(f"{window_id}.x"), self.get(f"{window_id}.y")
 
     def window_size(self, window_id: str) -> tuple[int | None, int | None]:
-        """读取记忆的窗口尺寸（仅 chat 有实际意义）。"""
+        """读取记忆的窗口尺寸。"""
         return self.get(f"{window_id}.width"), self.get(f"{window_id}.height")

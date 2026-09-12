@@ -2,11 +2,13 @@
    主题：玻璃拟态 · 默认 (Glassmorphism)
    ============================================================
    说明：
-     - 主样式表（web/css/base.css / chat.css / floatball.css）全部
+     - 主样式表（web/css/base.css / chat.css / settings.css）全部
        通过 CSS 变量取色，本文件只需覆盖 :root 变量即可完成换肤；
      - 自定义主题：复制本目录为 themes/<你的主题名>/，
        修改本文件的变量与 manifest.json 后重启程序即可生效；
      - 本文件使用 file:// 被 <link> 动态加载，url() 相对本文件解析。
+     - 磨砂玻璃的关键变量：--glass-bg（玻璃底色）/ --glass-blur（模糊半径）/
+       --backdrop-image（玻璃背后被模糊的页面内背景，见 base.css）。
    ============================================================ */
 
 :root {
@@ -19,7 +21,8 @@
   --glass-bg: rgba(255, 255, 255, 0.14);
   --glass-bg-strong: rgba(255, 255, 255, 0.24);
   --glass-border: rgba(255, 255, 255, 0.35);
-  --glass-blur: 20px;
+  --glass-blur: 26px;
+  --surface: rgba(250, 250, 254, 0.90);
 
   /* ---- 文本 ---- */
   --text-primary: #1c1f2b;
@@ -57,4 +60,5 @@
   --glass-bg-strong: rgba(24, 27, 44, 0.6);
   --glass-border: rgba(255, 255, 255, 0.16);
   --hover: rgba(255, 255, 255, 0.1);
+  --surface: rgba(24, 26, 42, 0.92);
 }

@@ -88,7 +88,6 @@
           <button data-tab="appearance" class="active">外观</button>
           <button data-tab="ai">AI 接口</button>
           <button data-tab="prompts">提示词</button>
-          <button data-tab="file">文件处理</button>
           <button data-tab="general">通用</button>
         </div>
 
@@ -150,7 +149,7 @@
             <h3>📋 系统提示词分组</h3>
             <div class="muted" style="margin-bottom:12px">
               创建分组并为每个分组添加多条提示词；用右侧“开关”启用一个或多个分组，
-              下方按顺序排列，对话与文件处理会把启用分组里的提示词依次拼接成系统提示词。
+              下方按顺序排列，对话会把启用分组里的提示词依次拼接成系统提示词。
             </div>
             <div class="muted" id="promptStat" style="margin-bottom:8px"></div>
             <div id="promptGroups"></div>
@@ -161,46 +160,26 @@
             </div>
           </section>
 
-          <!-- 文件处理 -->
-          <section class="panel" data-panel="file">
-            <h3>📁 拖拽文件处理</h3>
-            <div class="group">
-              <label>写回方式</label>
-              <div class="row">
-                <label style="display:flex;gap:6px;align-items:center"><input type="radio" name="fileMode" value="overwrite"> 覆盖原文件</label>
-                <label style="display:flex;gap:6px;align-items:center"><input type="radio" name="fileMode" value="append"> 追加到文件末尾</label>
-              </div>
-            </div>
-            <div class="group">
-              <label>处理指令模板（附在系统提示词后）</label>
-              <textarea class="field" id="fileInstruction" style="min-height:90px"></textarea>
-            </div>
-            <div class="group">
-              <label>单文件最大字符数</label>
-              <input class="field" type="number" id="fileMaxChars" min="1000" max="1000000" step="1000">
-            </div>
-            <div class="muted">支持 .txt/.md/.py/.json/.csv/.html/.css 等文本文件；超大或二进制文件会被拒绝。</div>
-          </section>
-
           <!-- 通用 -->
           <section class="panel" data-panel="general">
             <h3>⚙️ 通用</h3>
-            <div class="group">
-              <label>悬浮球自动光效（按时段切换颜色与呼吸）</label>
-              <div class="row">
-                <span class="switch"><input type="checkbox" id="swBallFx"><span class="track"></span></span>
-              </div>
-            </div>
             <div class="group">
               <label>全局热键（当前值；修改请在 data/settings.json 的 hotkeys 中编辑后重启）</label>
               <div class="hotkey-box" id="hotkeyBox"></div>
             </div>
             <div class="group">
+              <label>启动与窗口</label>
+              <div class="row">
+                <span class="switch"><input type="checkbox" id="swStartHidden"><span class="track"></span></span>
+                <span class="muted" style="margin-left:8px">静默启动（启动后隐藏，用热键或托盘唤出，适合开机自启）</span>
+              </div>
+            </div>
+            <div class="group">
               <label>交互说明</label>
               <div class="static-info">
-                · 单击悬浮球 → 打开本窗口<br>
-                · 双击悬浮球 → 功能预留（后续自定义入口）<br>
-                · 文件拖到悬浮球上 → AI 处理并写回<br>
+                · 热键 / 托盘图标 → 显示或隐藏本窗口<br>
+                · 拖动顶部标题栏 → 移动窗口<br>
+                · 拖拽或粘贴图片 → 作为多模态输入随消息发送<br>
                 · 修改<b>最新一条</b>提问 → 自动重新生成回答<br>
                 · 删除某条消息 → 其后的内容一并删除<br>
                 · 数据目录：<b id="dataDirText">data/</b>

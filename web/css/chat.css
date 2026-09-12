@@ -2,28 +2,38 @@
    聊天悬浮窗样式
    ============================================================ */
 
-/* 圆角“玻璃卡片”：四周留少量透明边距让圆角生效。
-   注意：绝不在这里加外部 box-shadow —— 大尺寸外阴影会画到
-   透明边距里并撞上窗口边缘，看起来就像卡片下的“直角背景层”。 */
+/* 窗口不透明：底色由 html 提供（见 base.css），body 必须透明，
+   否则会盖住 body::before 的背景层，磨砂玻璃失效。 */
 body.chat-page {
   background: transparent;
 }
 
+/* 磨砂玻璃面板：撑满整个窗口（无外边距），靠 backdrop-filter 模糊
+   body::before 的页面内背景。窗口本身无系统边框，边缘由窗口裁切。 */
 .app {
   position: relative;
   display: flex;
-  width: calc(100vw - 18px);
-  height: calc(100vh - 18px);
-  margin: 9px;
-  border-radius: 20px;
+  width: 100vw;
+  height: 100vh;
+  margin: 0;
+  border-radius: var(--window-radius);
   overflow: hidden;
-  background:
-    radial-gradient(120% 90% at 0% 0%, rgba(255, 255, 255, 0.45), rgba(255, 255, 255, 0) 55%),
-    linear-gradient(165deg,
-      rgba(252, 252, 255, 0.84),
-      rgba(246, 247, 253, 0.78) 42%,
-      rgba(235, 237, 250, 0.82));
-  backdrop-filter: blur(22px) saturate(1.2);
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur)) saturate(1.35);
+  /* 1px 内高光：让玻璃上沿有一道边光 */
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45);
+}
+
+/* 颗粒噪点：叠在内容之上（pointer-events:none），消除大面积渐变的“塑料感” */
+.app::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  pointer-events: none;
+  opacity: 0.05;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 
 /* ---------- 左侧会话栏 ---------- */
@@ -32,10 +42,11 @@ body.chat-page {
   flex: 0 0 216px;
   display: flex;
   flex-direction: column;
-  /* 更高不透明度、带细微竖向渐变，与主区拉开层次 */
+  /* 半透明层次：比主区稍亮一点拉开层级，但不做成一整块实色，
+     否则会盖掉磨砂玻璃的质感 */
   background: linear-gradient(180deg,
-    rgba(244, 246, 253, 0.92),
-    rgba(235, 238, 250, 0.86));
+    rgba(255, 255, 255, 0.34),
+    rgba(255, 255, 255, 0.18));
   border-right: 1px solid rgba(150, 145, 205, 0.28);
   box-shadow: 4px 0 14px rgba(90, 80, 170, 0.06);
   overflow: hidden;

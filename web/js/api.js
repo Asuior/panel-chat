@@ -23,11 +23,9 @@
           selected_prompt_groups: [],
           user: { name: '我', avatar: null },
           assistant: { name: 'AI 助手', avatar: null },
-          chat: { width: 420, height: 700, min_width: 500, min_height: 600 },
-          ball: { size: 70 },
-          ball_light_effect: true,
-          file_processing: { mode: 'overwrite', instruction: '', max_chars: 80000 },
-          hotkeys: { toggle_ball: 'ctrl+alt+q', toggle_chat: 'ctrl+alt+w' }
+          chat: { width: 500, height: 700, min_width: 500, min_height: 600 },
+          start_hidden: true,
+          hotkeys: { toggle_chat: 'ctrl+alt+w' }
         },
         providers: [
           { id: 'mock', name: '本地模拟（离线测试）', description: '浏览器预览用假数据',
@@ -70,8 +68,7 @@
     save_conversation: function (id, messages) {
       return Promise.resolve({ id: id, messages: messages || [] });
     },
-    get_image_data_url: function () { return Promise.resolve(null); },
-    process_file: function () { return Promise.resolve({ ok: false, error: '浏览器预览模式不处理文件' }); }
+    get_image_data_url: function () { return Promise.resolve(null); }
   };
 
   /* ---------------- 调用入口 ---------------- */

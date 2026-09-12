@@ -317,7 +317,7 @@
   /* 内置默认欢迎内容（不含头像位） */
   function defaultWelcomeContentHtml() {
     return '<h2>你好，我是你的 AI 助手</h2>' +
-      '<p>· 拖拽文件到悬浮球，AI 处理并写回原文件<br>' +
+      '<p>· 支持图片输入：粘贴、拖拽或点击上传<br>' +
       '· 消息可编辑：修改最新提问将自动重新生成<br>' +
       '· 消息可删除：其后内容一并截断<br>' +
       '· 支持 Markdown 与代码高亮</p>' +
@@ -927,7 +927,6 @@
       // 高分屏换算：screenX 为物理像素，窗口尺寸参数为逻辑像素
       var dpr = window.devicePixelRatio || 1;
 
-      var moved = false;
       function onMove(ev) {
         var w = Math.max(minW, startW + (ev.screenX - startX) / dpr);
         var h = Math.max(minH, startH + (ev.screenY - startY) / dpr);
@@ -935,16 +934,11 @@
         if (mode.indexOf('v') >= 0) h = startH;
         AI.call('resize_window', 'chat', Math.round(w), Math.round(h))
           .catch(function (err) { console.error(err); });
-        moved = true;
       }
       function onUp() {
         window.removeEventListener('mousemove', onMove);
         window.removeEventListener('mouseup', onUp);
-        if (!moved) return; // 仅点击未拖动：不需要恢复
-        // 拖动结束：直接通知后端做一次“隐藏→重显”恢复透明背景。
-        // 不依赖 resize 事件，确保每次手松都触发。
-        AI.call('refresh_window_transparency', 'chat')
-          .catch(function (err) { console.error('[chat] 透明恢复失败', err); });
+        // 拖动结束无需任何善后：窗口不透明，缩放不会丢失合成
       }
       window.addEventListener('mousemove', onMove);
       window.addEventListener('mouseup', onUp);
@@ -952,7 +946,6 @@
     S.rzRight.addEventListener('mousedown', function (e) { startResize(e, 'w'); });
     S.rzBottom.addEventListener('mousedown', function (e) { startResize(e, 'h'); });
     S.rzCorner.addEventListener('mousedown', function (e) { startResize(e, 'wh'); });
-    // 说明：系统边缘拖拽等其它 resize 由后端 resized 事件兜底自动恢复。
   }
 
   /* ---------------- 多模态：上传 / 粘贴 / 拖放 ---------------- */

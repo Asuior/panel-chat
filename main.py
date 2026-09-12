@@ -5,9 +5,19 @@ Alice —— 桌面快捷 AI 辅助工具（程序入口）。
 启动流程：
     1. 检查运行依赖（pywebview / keyboard / pystray / Pillow）；
     2. 初始化数据目录与各类管理器（设置/提示词/会话/插件）；
-    3. 创建两个 PyWebView 窗口（悬浮球 + 悬浮窗）；
+    3. 创建一个 PyWebView 窗口（对话窗口：无边框 / 不透明 / 不进任务栏）；
     4. 启动系统托盘（pystray）与全局热键（keyboard）；
     5. 进入 PyWebView 事件循环。
+
+窗口可见性：
+    默认**静默启动**（窗口隐藏，靠托盘或热键 Ctrl+Alt+W 唤出），方便开机自启；
+    首次运行（data/settings.json 不存在）时显示一次，避免新用户以为程序没启动。
+    该行为由 settings.json 的 start_hidden 控制。
+
+任务栏：
+    对话窗口是工具窗口（WS_EX_TOOLWINDOW），不进任务栏也不进 Alt+Tab；
+    但只有**托盘与全局热键都可用**时才真的隐藏任务栏按钮，否则保留它作为
+    兜底入口（详见 WindowController.apply_taskbar_policy）。
 
 用法：  python main.py
 调试：  ALICE_DEBUG=1 python main.py   （打开 WebView2 开发者工具）
@@ -58,7 +68,7 @@ def _create_backend():
     from core.plugin_manager import PluginManager
     from core.prompt_manager import PromptManager
     from core.settings_manager import SettingsManager
-    from core.window_controller import WIN_BALL, WIN_CHAT, WindowController
+    from core.window_controller import WIN_CHAT, WindowController
 
     settings = SettingsManager()
     prompts = PromptManager()
@@ -83,7 +93,6 @@ def _create_backend():
         "plugins": plugins,
         "controller": controller,
         "api": api,
-        "WIN_BALL": WIN_BALL,
         "WIN_CHAT": WIN_CHAT,
     }
 
@@ -120,7 +129,7 @@ def _clamp_position(settings, window_id: str, width: int, height: int):
     读取记忆位置并保证窗口仍可见。
 
     · 只要窗口在**任意一块屏幕**内还留有足够可见区域，就按记忆位置恢复
-      （多屏用户把悬浮球/聊天窗放在副屏时不会被强行拉回主屏）；
+      （多屏用户把窗口放在副屏时不会被强行拉回主屏）；
     · 若完全落在所有屏幕之外（例如副屏被拔掉），再夹回第一块屏幕。
     """
     x, y = settings.window_position(window_id)
@@ -150,6 +159,12 @@ class AliceApp:
         self._tray = None
         self._tray_thread: threading.Thread | None = None
         self._quitting = threading.Event()
+        # 首次运行（无 settings.json）：强制显示一次窗口
+        self._first_run = bool(getattr(self.settings, "first_run", False))
+        # 目标启动可见性：静默启动 = 启动后隐藏
+        self._start_hidden = bool(self.settings.get("start_hidden", True))
+        if self._first_run:
+            self._start_hidden = False
 
     # ------------------------------------------------------------------ #
     # 窗口创建
@@ -159,51 +174,29 @@ class AliceApp:
 
         from core.paths import web_url
 
-        WIN_BALL, WIN_CHAT = self.b["WIN_BALL"], self.b["WIN_CHAT"]
-        ball_diameter = int(self.settings.get("ball.size", 70) or 70)
-        # 窗口比球大一圈（四周各留 16px 透明边距）：
-        # 保证球是正圆，且外发光（≤16px）在窗口内自然衰减、不会被边界截成矩形
-        ball_win = ball_diameter + 32
+        WIN_CHAT = self.b["WIN_CHAT"]
         chat_min = (int(self.settings.get("chat.min_width", 500)),
                     int(self.settings.get("chat.min_height", 600)))
         # 恢复上次的窗口尺寸（用户可调），并夹在 [最小值, 主屏工作区] 之间
-        chat_w = int(self.settings.get("chat.width", 420) or 420)
+        chat_w = int(self.settings.get("chat.width", 500) or 500)
         chat_h = int(self.settings.get("chat.height", 700) or 700)
         sx0, sy0, sw0, sh0 = _primary_area()
         chat_w = max(chat_min[0], min(chat_w, max(chat_min[0], sw0)))
         chat_h = max(chat_min[1], min(chat_h, max(chat_min[1], sh0)))
 
-        # --- 悬浮球 ---
-        bx, by = _clamp_position(self.settings, WIN_BALL, ball_win, ball_win)
-        if bx is None:
-            sx, sy, sw, sh = _primary_area()
-            bx, by = sx + sw - ball_win - 48, sy + sh - ball_win - 160
-        ball = webview.create_window(
-            "悬浮球",
-            url=web_url("floatball.html"),
-            js_api=self.api,
-            width=ball_win,
-            height=ball_win,
-            x=bx,
-            y=by,
-            resizable=False,
-            frameless=True,
-            transparent=True,
-            on_top=True,
-            easy_drag=True,          # 整球可拖
-            hidden=False,
-            shadow=False,
-            text_select=False,
-            focus=False,
-        )
-
-        # --- 悬浮窗（聊天） ---
         cx, cy = _clamp_position(self.settings, WIN_CHAT, chat_w, chat_h)
         if cx is None:
             sx, sy, sw, sh = _primary_area()
             cx, cy = sx + sw - chat_w - 90, sy + (sh - chat_h) // 2 - 40
+
+        hidden = self._start_hidden
+        if self._first_run:
+            log.info("首次运行（尚无 settings.json）：启动时显示窗口一次")
+        else:
+            log.info("启动可见性：%s", "隐藏（静默启动）" if hidden else "显示")
+
         chat = webview.create_window(
-            "悬浮窗",
+            "Alice",
             url=web_url("index.html"),
             js_api=self.api,
             width=chat_w,
@@ -213,84 +206,63 @@ class AliceApp:
             resizable=True,
             min_size=chat_min,
             frameless=True,
-            transparent=True,
-            # 悬浮窗始终置顶（已移除“取消置顶”功能：本窗口是工具窗口、
-            # 没有任务栏入口，一旦取消置顶并显示桌面后就无法再找到它）
+            # 不透明：磨砂玻璃观感完全由页面内 CSS 实现，不依赖窗口级透明合成
+            transparent=False,
+            # 与 web/css/base.css 的 --window-base 保持一致，
+            # 避免窗口显示瞬间在页面绘制前闪一下 WebView2 的默认白底
+            background_color="#ECEEF6",
+            # 始终置顶（本窗口是工具窗口、没有任务栏入口，取消置顶后就再也
+            # 找不回它了；置顶与“不进任务栏”是一组绑定取舍）
             on_top=True,
             easy_drag=False,         # 通过 .pywebview-drag-region 头部拖拽
-            hidden=True,
+            hidden=hidden,
             shadow=False,
             text_select=True,
             focus=False,
         )
 
-        self.windows = {WIN_BALL: ball, WIN_CHAT: chat}
-        self.controller.register(WIN_BALL, ball, initially_visible=True)
-        self.controller.register(WIN_CHAT, chat, initially_visible=False)
+        self.windows = {WIN_CHAT: chat}
+        self.controller.register(WIN_CHAT, chat, initially_visible=not hidden)
         return self.windows
-
-    # ------------------------------------------------------------------ #
-    # 文件拖拽处理
-    # ------------------------------------------------------------------ #
-    def _on_files_dropped(self, event: dict) -> None:
-        """悬浮球收到系统文件拖放：逐个处理并把结果推送到两个窗口。"""
-        WIN_BALL, WIN_CHAT = self.b["WIN_BALL"], self.b["WIN_CHAT"]
-        files = (event.get("dataTransfer") or {}).get("files") or []
-        paths = [f.get("pywebviewFullPath") for f in files if f.get("pywebviewFullPath")]
-        if not paths:
-            # 无真实路径（理论上不会发生，见 util.py 配对逻辑），给个提示
-            self.controller.notify(WIN_BALL, "file-drop-state",
-                                   {"state": "error", "message": "无法获取文件路径"})
-            return
-
-        results = []
-        self.controller.notify(WIN_BALL, "file-drop-state",
-                               {"state": "processing", "message": f"正在处理 {len(paths)} 个文件…"})
-        for p in paths:
-            try:
-                results.append(self.api.process_file(p))
-            except Exception as exc:  # noqa: BLE001
-                results.append({"ok": False, "name": os.path.basename(p),
-                                "message": "", "error": str(exc)})
-
-        ok_count = sum(1 for r in results if r.get("ok"))
-        summary = f"文件处理完成：成功 {ok_count}/{len(results)}"
-        self.controller.notify(WIN_BALL, "file-drop-state",
-                               {"state": "done", "message": summary, "results": results})
-        # 同时把摘要与失败明细推送到聊天窗 toast
-        self.controller.notify(WIN_CHAT, "backend-toast",
-                               {"type": "success" if ok_count == len(results) else "warning",
-                                "text": summary})
-        for r in results:
-            if not r.get("ok"):
-                self.controller.notify(WIN_CHAT, "backend-toast",
-                                       {"type": "error",
-                                        "text": f"{r.get('name')}：{r.get('error')}"})
 
     # ------------------------------------------------------------------ #
     # 托盘
     # ------------------------------------------------------------------ #
     def start_tray(self):
-        """启动系统托盘；失败仅告警并降级为全局热键控制，不阻断主程序。"""
+        """启动系统托盘；失败仅告警并降级，不阻断主程序。"""
         try:
             self._start_tray_impl()
         except Exception as exc:  # noqa: BLE001
-            log.exception("系统托盘启动失败，仅使用全局热键控制窗口")
-            print(f"[警告] 系统托盘启动失败（{exc}），可通过全局热键控制窗口。")
+            log.exception("系统托盘启动失败")
+            print(f"[警告] 系统托盘启动失败（{exc}）。")
+            self._warn_degraded(f"系统托盘启动失败（{exc}）")
+
+    def _warn_degraded(self, reason: str) -> None:
+        """逃生通道不可用时的提示：保留任务栏按钮，并尽量让用户看见原因。"""
+        message = (
+            f"{reason}。为保证仍能找回窗口，已保留任务栏按钮"
+            "（正常情况下它会被隐藏）。"
+        )
+        log.warning(message)
+        print(f"[警告] {message}")
+        # 托盘若可用，用气泡再提示一次；不可用时只能靠日志与任务栏
+        if self._tray is not None:
+            try:
+                self._tray.notify(message, "Alice")
+            except Exception:  # noqa: BLE001
+                pass
 
     def _start_tray_impl(self):
         try:
             import pystray
             from PIL import Image, ImageDraw
         except ImportError as exc:
-            log.warning("无法启动系统托盘（缺少依赖 %s），可通过全局热键控制窗口。", exc)
+            log.warning("无法启动系统托盘（缺少依赖 %s）", exc)
+            self._warn_degraded(f"无法启动系统托盘（缺少依赖 {exc}）")
             return
 
-        WIN_BALL, WIN_CHAT = self.b["WIN_BALL"], self.b["WIN_CHAT"]
+        WIN_CHAT = self.b["WIN_CHAT"]
         controller, settings = self.controller, self.settings
-
-        def _toggle(wid):
-            controller.toggle(wid)
 
         # --- 主题子菜单 ---
         def _themes_menu():
@@ -302,7 +274,6 @@ class AliceApp:
                 try:
                     theme = self.api.apply_theme(theme_id)
                     controller.notify(WIN_CHAT, "theme-changed", theme)
-                    controller.notify(WIN_BALL, "theme-changed", theme)
                 except Exception as exc:  # noqa: BLE001
                     log.warning("切换主题失败: %s", exc)
 
@@ -352,8 +323,11 @@ class AliceApp:
             )
 
         menu = pystray.Menu(
-            pystray.MenuItem("显示/隐藏 悬浮球", lambda _i, _it: _toggle(WIN_BALL)),
-            pystray.MenuItem("显示/隐藏 悬浮窗", lambda _i, _it: _toggle(WIN_CHAT)),
+            pystray.MenuItem(
+                "显示/隐藏 对话窗口",
+                lambda _i, _it: controller.toggle(WIN_CHAT),
+                default=True,        # 左键单击托盘图标即切换窗口
+            ),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem("切换主题", _themes_menu()),
             pystray.MenuItem("切换 AI 接口", _providers_menu()),
@@ -386,36 +360,35 @@ class AliceApp:
     # 全局热键
     # ------------------------------------------------------------------ #
     def start_hotkeys(self):
+        """注册全局热键。注册失败会记录在案，供任务栏降级判断使用。"""
         try:
             import keyboard
         except ImportError:
             log.warning("keyboard 不可用，全局热键未注册。")
+            self._warn_degraded("keyboard 库不可用，全局热键未注册")
             return
 
-        WIN_BALL, WIN_CHAT = self.b["WIN_BALL"], self.b["WIN_CHAT"]
+        WIN_CHAT = self.b["WIN_CHAT"]
         hotkeys = self.settings.get("hotkeys") or {}
+        key = hotkeys.get("toggle_chat")
+        if not key:
+            log.warning("未配置 toggle_chat 热键。")
+            self._warn_degraded("未配置全局热键 toggle_chat")
+            return
 
-        def _make_toggle(wid):
-            def _cb():
-                try:
-                    self.controller.toggle(wid)
-                except Exception as exc:  # noqa: BLE001
-                    log.warning("热键切换 %s 失败: %s", wid, exc)
-
-            return _cb
-
-        for key, wid in (
-            (hotkeys.get("toggle_ball"), WIN_BALL),
-            (hotkeys.get("toggle_chat"), WIN_CHAT),
-        ):
-            if not key:
-                continue
+        def _cb():
             try:
-                handle = keyboard.add_hotkey(key, _make_toggle(wid))
-                self._hotkey_handles.append((handle, key))
-                log.info("全局热键已注册: %s -> %s", key, wid)
+                self.controller.toggle(WIN_CHAT)
             except Exception as exc:  # noqa: BLE001
-                log.warning("热键 %s 注册失败（可能被占用或权限不足）: %s", key, exc)
+                log.warning("热键切换窗口失败: %s", exc)
+
+        try:
+            handle = keyboard.add_hotkey(key, _cb)
+            self._hotkey_handles.append((handle, key))
+            log.info("全局热键已注册: %s -> %s", key, WIN_CHAT)
+        except Exception as exc:  # noqa: BLE001
+            log.warning("热键 %s 注册失败（可能被占用或权限不足）: %s", key, exc)
+            self._warn_degraded(f"热键 {key} 注册失败（可能被占用或权限不足）")
 
     # ------------------------------------------------------------------ #
     def quit(self):
@@ -439,66 +412,95 @@ class AliceApp:
                 self._tray.stop()
             except Exception:  # noqa: BLE001
                 pass
-        for wid in (self.b["WIN_BALL"], self.b["WIN_CHAT"]):
-            self.controller.remember_position(wid)
+        self.controller.remember_position(self.b["WIN_CHAT"])
         self.controller.destroy_all()
         # 兜底：若 GUI 循环未能自然退出，4 秒后强制结束进程
         threading.Timer(4.0, os._exit, args=[0]).start()
 
     # ------------------------------------------------------------------ #
+    def _escape_hatch_available(self) -> bool:
+        """
+        逃生通道是否可用 = 托盘起来了 **且** 至少注册到一个全局热键。
+
+        本窗口不进任务栏、也不进 Alt+Tab；一旦隐藏，只能靠托盘或热键找回。
+        两者缺一就不能安全地隐藏任务栏按钮（见 WindowController.apply_taskbar_policy）。
+        抽成独立方法是为了让冒烟测试能覆盖这段判定，而不必真的跑 GUI。
+        """
+        return (self._tray is not None) and bool(self._hotkey_handles)
+
+    # ------------------------------------------------------------------ #
     def _on_gui_started(self):
         """GUI 循环启动后（子线程）：
-        1) 隐藏任务栏图标；
-        2) 让窗口从此可被点击激活（启动早期 focus=False 会令 pywebview
+        1) 等待原生窗口句柄就绪；
+        2) 按“托盘 + 热键是否都可用”决定是否隐藏任务栏按钮（逃生通道）；
+        3) 落实启动可见性（静默启动时显式隐藏一次）；
+        4) 让窗口从此可被点击激活（启动早期 focus=False 会令 pywebview
            在每次 Activated 事件里反复重加 WS_EX_NOACTIVATE —— 把 focus 标记
            翻为 True 即可让它不再重加，配合 enable_activation 清除现有样式）；
-        3) 窗口激活时强制给 WebView2 控件焦点（键盘直达，等价隐藏/再显示的路径）。
+        5) 窗口激活时强制给 WebView2 控件焦点（键盘直达）。
         """
         import time
 
-        win_ids = (self.b["WIN_BALL"], self.b["WIN_CHAT"])
+        WIN_CHAT = self.b["WIN_CHAT"]
         deadline = time.time() + 10
         while time.time() < deadline:
-            if all(self.controller.window_handle(w) is not None for w in win_ids):
+            if self.controller.window_handle(WIN_CHAT) is not None:
                 break
             time.sleep(0.2)
-        for wid in win_ids:
-            try:
-                # 关键：解除 pywebview 对 focus=False 的持续重加
-                win = self.windows.get(wid)
-                if win is not None and hasattr(win, "focus"):
-                    win.focus = True
-                ok = self.controller.hide_taskbar_button(wid)
-                log.info("隐藏任务栏图标 %s -> %s", wid, ok)
-            except Exception as exc:  # noqa: BLE001
-                log.warning("隐藏任务栏图标失败(%s): %s", wid, exc)
-            try:
-                self.controller.enable_activation(wid)
-            except Exception as exc:  # noqa: BLE001
-                log.warning("恢复窗口激活(%s)失败: %s", wid, exc)
-            try:
-                # 以系统真实可见性校正内部记录（聊天窗可能启动即可见）
-                self.controller.sync_visibility(wid)
-            except Exception as exc:  # noqa: BLE001
-                log.warning("可见性校正(%s)失败: %s", wid, exc)
-            try:
-                self.controller.focus_webview_on_activate(wid)
-            except Exception as exc:  # noqa: BLE001
-                log.warning("挂接 WebView 聚焦(%s)失败: %s", wid, exc)
-        # 悬浮球启动即显示、但透明合成需一次“隐藏→重显”才建立：
-        # 启动约 1.5s 后自动预热一次，消除启动时的白底
+
+        # --- 不透明：清掉 pywebview 因 hidden=True 的 Opacity 操作而留下的
+        #         WS_EX_LAYERED，避免窗口继续走分层合成路径（见方法注释） ---
         try:
-            self.controller.arm_startup_transparency()
+            self.controller.remove_layered_window(WIN_CHAT)
         except Exception as exc:  # noqa: BLE001
-            log.warning("悬浮球启动预热调度失败: %s", exc)
+            log.warning("清除分层窗口样式失败: %s", exc)
+
+        # --- 圆角：DWM 系统圆角（Win11）。已实测在 frameless 窗口上生效 ---
+        if self.settings.get("round_corners", True):
+            try:
+                self.controller.apply_round_corners(WIN_CHAT, "round")
+            except Exception as exc:  # noqa: BLE001
+                log.warning("设置窗口圆角失败: %s", exc)
+
+        # --- 任务栏：只有逃生通道（托盘 + 热键）都可用时才隐藏按钮 ---
+        safe = self._escape_hatch_available()
+        try:
+            hidden = self.controller.apply_taskbar_policy(safe)
+            log.info("任务栏按钮隐藏=%s（托盘=%s，热键=%d 个）",
+                     hidden, self._tray is not None, len(self._hotkey_handles))
+        except Exception as exc:  # noqa: BLE001
+            log.warning("应用任务栏策略失败: %s", exc)
+
+        # --- 焦点与激活 ---
+        try:
+            win = self.windows.get(WIN_CHAT)
+            if win is not None and hasattr(win, "focus"):
+                win.focus = True
+            self.controller.enable_activation(WIN_CHAT)
+        except Exception as exc:  # noqa: BLE001
+            log.warning("恢复窗口激活失败: %s", exc)
+
+        # --- 可见性：以系统真实可见性校正，并落实静默启动 ---
+        try:
+            self.controller.sync_visibility(WIN_CHAT)
+            if self._start_hidden and self.controller.is_visible(WIN_CHAT):
+                # pywebview 的 hidden=True 在某些合成路径下未必真的隐藏，
+                # 这里再显式隐藏一次，确保静默启动一定成立。
+                log.info("落实静默启动：显式隐藏窗口")
+                self.controller.hide(WIN_CHAT)
+        except Exception as exc:  # noqa: BLE001
+            log.warning("落实启动可见性失败: %s", exc)
+
+        try:
+            self.controller.focus_webview_on_activate(WIN_CHAT)
+        except Exception as exc:  # noqa: BLE001
+            log.warning("挂接 WebView 聚焦失败: %s", exc)
 
     # ------------------------------------------------------------------ #
     def run(self):
         import webview
 
         self.build_windows()
-        # 悬浮球注册文件拖放
-        self.controller.register_drop_handler(self.b["WIN_BALL"], self._on_files_dropped)
         self.start_hotkeys()
         self.start_tray()
 

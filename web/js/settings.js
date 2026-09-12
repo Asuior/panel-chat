@@ -1,5 +1,5 @@
 /* ============================================================
-   settings.js —— 设置弹层（外观 / AI 接口 / 提示词 / 文件 / 通用）
+   settings.js —— 设置弹层（外观 / AI 接口 / 提示词 / 通用）
    ------------------------------------------------------------
    依赖 window.AppState（由 chat.js 提供）与 window.AI / window.U。
    所有修改即时落盘（后端 save_settings / save_prompts / …）。
@@ -404,26 +404,13 @@
     });
   }
 
-  /* ---------------- 文件处理面板 ---------------- */
-  function renderFilePanel() {
-    var fp = state.settings.file_processing || {};
-    if (!S.fileInstruction) return;
-    var mode = fp.mode === 'append' ? 'append' : 'overwrite';
-    U.$$('input[name=fileMode]').forEach(function (r) {
-      r.checked = r.value === mode;
-    });
-    S.fileInstruction.value = fp.instruction || '';
-    S.fileMaxChars.value = fp.max_chars || 80000;
-  }
-
   /* ---------------- 通用面板 ---------------- */
   function renderGeneral() {
     var s = state.settings;
-    S.swBallFx.checked = !!s.ball_light_effect;
+    S.swStartHidden.checked = s.start_hidden !== false;
     var hk = s.hotkeys || {};
     S.hotkeyBox.textContent =
-      '悬浮球：' + (hk.toggle_ball || '未设置') + '\n' +
-      '悬浮窗：' + (hk.toggle_chat || '未设置');
+      '显示/隐藏窗口：' + (hk.toggle_chat || '未设置');
   }
 
   /* ---------------- 外观面板 ---------------- */
@@ -438,7 +425,7 @@
   /* ---------------- 整体刷新 ---------------- */
   function refreshAll() {
     renderThemes(); renderProviders(); renderTemp();
-    renderPrompts(); renderFilePanel(); renderGeneral(); renderAppearance();
+    renderPrompts(); renderGeneral(); renderAppearance();
   }
 
   /* ---------------- 弹层开关 ---------------- */
@@ -489,15 +476,14 @@
     S.tempVal = U.$('#tempVal');
     S.promptGroups = U.$('#promptGroups');
     S.enabledOrder = U.$('#enabledOrder');
-    S.fileInstruction = U.$('#fileInstruction');
-    S.fileMaxChars = U.$('#fileMaxChars');
-    S.swBallFx = U.$('#swBallFx');
+    S.swStartHidden = U.$('#swStartHidden');
     S.hotkeyBox = U.$('#hotkeyBox');
     S.userName = U.$('#userName');
     S.aiName = U.$('#aiName');
     S.userAvatarLg = U.$('#userAvatarLg');
     S.aiAvatarLg = U.$('#aiAvatarLg');
     S.bgFile = U.$('#bgFile');
+    S.panels = U.$('#settingsPanels');
 
     // 关闭：点遮罩 / Esc
     S.mask.addEventListener('click', function (e) {
@@ -518,6 +504,9 @@
         btn.classList.add('active');
         var pn = U.$('#settingsPanels .panel[data-panel="' + btn.getAttribute('data-tab') + '"]');
         if (pn) pn.classList.add('active');
+        // 弹层高度固定后各 tab 共用同一个滚动容器，切换时回到顶部，
+        // 否则从长面板滚到底再切到短面板会看到一个莫名其妙的空档。
+        if (S.panels) S.panels.scrollTop = 0;
       });
     });
 
@@ -589,25 +578,14 @@
       });
     });
 
-    // 文件处理
-    U.$$('input[name=fileMode]').forEach(function (r) {
-      r.addEventListener('change', function () {
-        if (r.checked) persist({ file_processing: { mode: r.value } });
-      });
-    });
-    U.$('#fileInstruction').addEventListener('change', function () {
-      persist({ file_processing: { instruction: U.$('#fileInstruction').value } });
-    });
-    U.$('#fileMaxChars').addEventListener('change', function () {
-      persist({ file_processing: { max_chars: parseInt(U.$('#fileMaxChars').value, 10) || 80000 } });
-    });
-
-    // 通用开关
-    S.swBallFx.addEventListener('change', function () {
-      AI.call('set_ball_light_effect', S.swBallFx.checked).then(function () {
-        state.settings.ball_light_effect = S.swBallFx.checked;
-        U.showToast(S.swBallFx.checked ? '光效已开启' : '光效已关闭', 'success');
-      }).catch(function (err) { U.showToast(err.message, 'error'); });
+    // 通用开关：静默启动
+    S.swStartHidden.addEventListener('change', function () {
+      var on = S.swStartHidden.checked;
+      persist({ start_hidden: on }).then(function () {
+        state.settings.start_hidden = on;
+        U.showToast(on ? '已开启静默启动（下次启动生效）'
+                       : '已关闭静默启动（下次启动生效）', 'success');
+      }).catch(function () {});
     });
 
     U.$('#dataDirText').textContent = 'data/（项目根目录）';

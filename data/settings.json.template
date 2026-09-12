@@ -1,57 +1,33 @@
 {
   "version": 1,
-  "sidebar_visible": false,
-  "ball": {
-    "size": 70,
-    "x": 1532,
-    "y": 882
-  },
+  "sidebar_visible": true,
   "chat": {
-    "width": 722,
-    "height": 600,
+    "width": 560,
+    "height": 720,
     "min_width": 500,
     "min_height": 600,
-    "x": 384,
-    "y": 164,
-    "always_on_top": true
+    "x": null,
+    "y": null
   },
   "hotkeys": {
-    "toggle_ball": "ctrl+alt+f1",
-    "toggle_chat": "ctrl+alt+f2"
+    "toggle_chat": "ctrl+alt+w"
   },
-  "provider": "ModelScope",
+  "start_hidden": true,
+  "provider": "mock",
   "temperature": 0.7,
-  "provider_params": {
-    "openai_compatible": {
-      "api_key": "dasujdj"
-    },
-    "deepseek": {
-      "api_key": "",
-      "model": "deepseek-v4-flash"
-    },
-    "ModelScope": {
-      "api_key": "",
-      "model": "Qwen/Qwen3.8-27B"
-    }
-  },
+  "provider_params": {},
   "multimodal": {},
   "selected_prompt_groups": [],
   "theme": "glassmorphism",
   "background_image": null,
   "use_background_blur": true,
   "user": {
-    "name": "User",
+    "name": "我",
     "avatar": null
   },
   "assistant": {
-    "name": "AI",
+    "name": "AI 助手",
     "avatar": null
-  },
-  "ball_light_effect": true,
-  "file_processing": {
-    "mode": "overwrite",
-    "instruction": "请阅读下面提供的文件内容，直接输出优化后的完整文件内容。不要添加额外解释，不要使用 Markdown 代码块包裹，保持原格式。",
-    "max_chars": 80000
   },
   "auto_launch": false
 }

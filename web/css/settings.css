@@ -1,7 +1,9 @@
 /* ============================================================
    设置弹层样式
    ============================================================ */
-.settings-body { display: flex; min-height: 440px; max-height: 78vh; }
+/* 弹层高度固定：切换 tab 时内容长短不一会让窗口大小跳变，观感很差。
+   高度写成确定值（受屏幕高度约束），让 .settings-panels 自己滚动。 */
+.settings-body { display: flex; height: min(560px, 78vh); }
 .settings-tabs {
   width: 128px; flex: 0 0 128px;
   display: flex; flex-direction: column; gap: 4px;
