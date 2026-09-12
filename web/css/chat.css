@@ -3,13 +3,14 @@
    ============================================================ */
 
 /* 窗口不透明：底色由 html 提供（见 base.css），body 必须透明，
-   否则会盖住 body::before 的背景层，磨砂玻璃失效。 */
+   否则会盖住 body::before 的背景层，背景就看不见了。 */
 body.chat-page {
   background: transparent;
 }
 
-/* 磨砂玻璃面板：撑满整个窗口（无外边距），靠 backdrop-filter 模糊
-   body::before 的页面内背景。窗口本身无系统边框，边缘由窗口裁切。 */
+/* 窗口本身**不磨砂**：背景（壁纸）保持清晰，模糊交给侧边栏 / 输入卡片 /
+   气泡这些浮层各自做 —— 这样背景上的覆盖元素仍是独立的浮层，
+   而不是把整个窗口糊成一张。 */
 .app {
   position: relative;
   display: flex;
@@ -18,10 +19,7 @@ body.chat-page {
   margin: 0;
   border-radius: var(--window-radius);
   overflow: hidden;
-  background: var(--glass-bg);
-  backdrop-filter: blur(var(--glass-blur)) saturate(1.35);
-  /* 1px 内高光：让玻璃上沿有一道边光 */
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45);
+  background: transparent;
 }
 
 /* 颗粒噪点：叠在内容之上（pointer-events:none），消除大面积渐变的“塑料感” */
@@ -37,39 +35,47 @@ body.chat-page {
 }
 
 /* ---------- 左侧会话栏 ---------- */
+/* 浮层面板：贴住窗口左边缘、上下到底（不留空隙），只圆右边两角。
+   窗口本身的圆角由 DWM 处理，所以左侧直角不会露出桌面。 */
 .sidebar {
   width: 216px;
-  flex: 0 0 216px;
+  flex: 0 0 auto;
   display: flex;
   flex-direction: column;
-  /* 半透明层次：比主区稍亮一点拉开层级，但不做成一整块实色，
-     否则会盖掉磨砂玻璃的质感 */
-  background: linear-gradient(180deg,
-    rgba(255, 255, 255, 0.34),
-    rgba(255, 255, 255, 0.18));
-  border-right: 1px solid rgba(150, 145, 205, 0.28);
-  box-shadow: 4px 0 14px rgba(90, 80, 170, 0.06);
+  margin: 0;
+  border-radius: 0 0 0 0;
+  background: var(--left-panel-bg);
+  /*backdrop-filter: blur(var(--glass-blur)) saturate(1.3);*/
+  box-shadow: 6px 0 22px rgba(30, 20, 80, 0.12);
   overflow: hidden;
   white-space: nowrap;
-  transition: flex-basis .24s ease, width .24s ease, opacity .24s ease;
+  transition: width .2s ease;
 }
-/* 侧边栏固定内容宽，收起动画期间不会被挤压换行 */
-.sidebar > * { width: 216px; flex-shrink: 0; }
-.sidebar > .conv-list { flex: 1 1 auto; }
 
-/* 收起状态：宽度收缩到 0，主区自动占满 */
-.app.collapsed .sidebar {
-  flex-basis: 0;
-  width: 0;
-  opacity: 0;
-  border-right-color: transparent;
-  box-shadow: none;
-}
-.app.collapsed .sidebar > * { visibility: hidden; }
+/* 收起状态：不是整条消失，而是留一条**窄边栏**，
+   展开按钮 / 新对话 / 底部的设置与隐藏都还在，一键就能展开回来。 */
+.app.collapsed .sidebar { width: 52px; }
+.app.collapsed #brandName,
+.app.collapsed .sidebar .lbl,
+.app.collapsed .sidebar .conv-list,
+.app.collapsed .sidebar .mini { display: none; }
+
 .sidebar-head { padding: 12px 10px 8px; display: flex; flex-direction: column; gap: 8px; }
+.sb-top { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.sb-toggle { font-size: 15px; line-height: 1; }
 .sidebar-head .brand {
   display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 14px;
-  padding: 0 4px;
+  padding: 0 4px; min-width: 0;
+}
+
+/* 窄边栏：入口全部收成居中的图标列 */
+.app.collapsed .sidebar-head { padding: 10px 0 8px; align-items: center; }
+.app.collapsed .sb-top { justify-content: center; }
+.app.collapsed .brand { display: none; }
+.app.collapsed #btnNewChat {
+  width: 36px; height: 36px; padding: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 16px; line-height: 1;
 }
 .brand .logo {
   width: 22px; height: 22px; border-radius: 50%;
@@ -122,10 +128,17 @@ body.chat-page {
 }
 
 .sidebar-foot {
+  margin-top: auto;               /* 窄边栏里会话列表被隐藏，底部仍贴底 */
   border-top: 1px solid var(--glass-border);
   padding: 8px 10px;
   display: flex; align-items: center; justify-content: space-between; gap: 6px;
 }
+/* 窄边栏：底部只剩图标，竖排居中 */
+.app.collapsed .sidebar-foot {
+  flex-direction: column; align-items: center; gap: 6px;
+  border-top: none; padding: 8px 0 10px;
+}
+.app.collapsed .foot-btns { flex-direction: column; gap: 6px; }
 .sidebar-foot .mini { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .sidebar-foot .mini .nm { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sidebar-foot .foot-btns { display: flex; gap: 2px; }
@@ -136,23 +149,19 @@ body.chat-page {
 /* ---------- 主区域 ---------- */
 .main { flex: 1; display: flex; flex-direction: column; min-width: 0; position: relative; }
 
+/* 头部浮在背景上：只用一层很淡的白色渐变保证文字可读，不做模糊 */
 .chat-head {
   display: flex; align-items: center; justify-content: space-between;
   gap: 8px;
-  padding: 12px 14px 8px;
+  padding: 12px 14px 12px;
   cursor: grab;               /* .pywebview-drag-region 拖拽窗口 */
-  background: linear-gradient(to bottom, rgba(255,255,255,0.35), rgba(255,255,255,0.05));
+  /*background: linear-gradient(to bottom, rgba(255, 255, 255, 0.6), rgba(255, 255, 255, 0));*/
 }
 .chat-head:active { cursor: grabbing; }
+.head-title { min-width: 0; }
 .chat-title { font-size: 15px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .chat-sub { font-size: 11px; color: var(--text-secondary); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .head-actions { display: flex; align-items: center; gap: 4px; flex: 0 0 auto; }
-.head-actions select {
-  font-size: 12px; max-width: 150px; padding: 3px 6px;
-  background: var(--glass-bg); border: 1px solid var(--glass-border);
-  border-radius: 7px;
-}
-.head-actions option { color: #1c1f2b; background: #fff; }
 
 /* ---------- 消息区 ---------- */
 .messages {
@@ -202,7 +211,7 @@ body.chat-page {
   color: var(--bubble-ai-text);
   border-top-left-radius: 4px;
   border: 1px solid var(--glass-border);
-  backdrop-filter: blur(10px);
+  backdrop-filter: blur(var(--bubble-blur)) saturate(1.2);
 }
 .bubble .err {
   color: var(--danger); font-weight: 600;
@@ -297,30 +306,59 @@ body.chat-page {
 .tok-num { color: #f78c6c; } .tok-com { color: #546e7a; font-style: italic; }
 .tok-fn { color: #82aaff; }
 
-/* 输入区 */
+/* 输入卡片：浮在背景上的一块磨砂玻璃（图上「模糊」的就是这一块）。
+   接口选择与发送按钮都收在卡片底部的工具条里。 */
 .composer {
-  padding: 8px 14px 12px;
+  position: relative;
+  margin: 8px 14px 12px;
+  padding: 10px 12px 9px;
   display: flex; flex-direction: column; gap: 6px;
-  background: linear-gradient(to top, rgba(255,255,255,0.5), rgba(255,255,255,0.12));
-  border-top: 1px solid rgba(255, 255, 255, 0.5);
+  border-radius: 18px;
+  background: var(--panel-bg);
+  backdrop-filter: blur(var(--glass-blur)) saturate(1.35);
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  box-shadow: 0 12px 32px rgba(30, 20, 80, 0.18);
 }
-.composer-row { display: flex; align-items: flex-end; gap: 8px; }
-.composer-row textarea {
-  flex: 1; resize: none; min-height: 40px; max-height: 160px;
-  padding: 10px 12px;
-  border-radius: var(--radius-md);
-  background: rgba(255, 255, 255, 0.72);
-  border: 1px solid rgba(124, 77, 255, 0.18);
-  font-size: 13.5px; line-height: 1.5;
+.composer textarea {
+  width: 100%; resize: none; min-height: 26px; max-height: 160px;
+  padding: 4px 4px 2px;
+  border: none; background: transparent;
+  font-size: 13.5px; line-height: 1.55;
   color: var(--text-primary);
   -webkit-user-select: text; user-select: text;
-  transition: border-color .15s, box-shadow .15s;
 }
-.composer-row textarea:focus {
-  border-color: rgba(124, 77, 255, 0.55);
-  box-shadow: 0 0 0 3px rgba(124, 77, 255, 0.12);
+.composer textarea::placeholder { color: var(--text-secondary); }
+
+/* 底部工具条：左「加图」，右「接口选择 + 发送」 */
+.composer-bar { display: flex; align-items: center; gap: 8px; }
+.bar-gap { flex: 1; }
+.composer-bar select {
+  appearance: none; -webkit-appearance: none;
+  max-width: 190px;
+  padding: 5px 24px 5px 11px;
+  font-size: 12px;
+  color: var(--text-primary);
+  background-color: rgba(255, 255, 255, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.55);
+  border-radius: 999px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%23666' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 9px center;
+  cursor: pointer;
 }
-#btnSend { height: 40px; padding: 0 18px; border-radius: var(--radius-md); font-size: 13.5px; }
+.composer-bar select:hover { background-color: rgba(255, 255, 255, 0.72); }
+.composer-bar option { color: #1c1f2b; background: #fff; }
+.btn-send {
+  width: 32px; height: 32px; flex: 0 0 32px; padding: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 50%;
+  font-size: 15px; line-height: 1;
+  background: var(--accent-gradient);
+  color: var(--text-on-accent);
+  box-shadow: 0 4px 12px rgba(124, 77, 255, 0.35);
+}
+.btn-send:hover { filter: brightness(1.08); }
+.btn-send:disabled { opacity: .55; cursor: default; filter: none; box-shadow: none; }
 .composer-hint { font-size: 11px; color: var(--text-secondary); padding: 0 4px; }
 
 /* 思考中指示 */
@@ -329,8 +367,20 @@ body.chat-page {
 .dot:nth-child(2) { animation-delay: .2s; } .dot:nth-child(3) { animation-delay: .4s; }
 @keyframes blink { 0%, 80%, 100% { opacity: .25; transform: scale(.8);} 40% { opacity: 1; transform: scale(1);} }
 
-/* 空状态 */
-.welcome { text-align: center; color: var(--text-secondary); padding: 60px 20px; display: flex; flex-direction: column; gap: 10px; align-items: center; }
+/* 空状态。背景改成清晰壁纸之后，欢迎页的小字直接压在照片上会看不清，
+   所以给它一块浮层磨砂底（和侧边栏/输入卡片同一套变量）。 */
+.welcome {
+  margin: auto;
+  text-align: center; color: var(--text-secondary);
+  padding: 32px 40px 28px;
+  display: flex; flex-direction: column; gap: 10px; align-items: center;
+  max-width: min(540px, 92%);
+  border-radius: 20px;
+  background: var(--panel-bg);
+  backdrop-filter: blur(var(--glass-blur)) saturate(1.25);
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  box-shadow: 0 12px 32px rgba(30, 20, 80, 0.16);
+}
 .welcome .big { width: 64px; height: 64px; border-radius: 50%; background: var(--accent-gradient); box-shadow: 0 0 30px rgba(124,77,255,.5); overflow: hidden; }
 .welcome h2 { color: var(--text-primary); font-size: 17px; }
 .welcome p { font-size: 12.5px; line-height: 1.9; }
@@ -347,14 +397,15 @@ body.chat-page {
    ============================================================ */
 .composer { position: relative; }
 .btn-img {
-  width: 40px; height: 40px; padding: 0; flex: 0 0 40px;
+  width: 30px; height: 30px; padding: 0; flex: 0 0 30px;
   display: inline-flex; align-items: center; justify-content: center;
-  border-radius: var(--radius-md);
-  background: var(--glass-bg);
-  border: 1px solid var(--glass-border);
-  font-size: 16px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.55);
+  font-size: 15px; line-height: 1;
+  color: var(--text-secondary);
 }
-.btn-img:hover { background: var(--hover); }
+.btn-img:hover { background: rgba(255, 255, 255, 0.78); color: var(--text-primary); }
 
 /* 待发送图片托盘 */
 .img-tray {

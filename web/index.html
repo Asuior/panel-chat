@@ -15,8 +15,14 @@
     <!-- ======== 左侧：会话列表 ======== -->
     <aside class="sidebar" id="sidebar">
       <div class="sidebar-head">
-        <div class="brand"><span class="logo" id="brandLogo"></span><span id="brandName">AI 助手</span></div>
-        <button class="btn btn-primary" id="btnNewChat">＋ 新对话</button>
+        <div class="sb-top">
+          <div class="brand"><span class="logo" id="brandLogo"></span><span id="brandName">AI 助手</span></div>
+          <!-- 收起 / 展开。收起后它留在窄边栏顶部，是恢复侧边栏的入口 -->
+          <button class="btn-icon sb-toggle" id="btnSidebarToggle" title="收起侧边栏">«</button>
+        </div>
+        <button class="btn btn-primary" id="btnNewChat" title="新对话">
+          <span class="ico">＋</span><span class="lbl">新对话</span>
+        </button>
       </div>
       <div class="conv-list" id="convList"></div>
       <div class="sidebar-foot">
@@ -34,15 +40,13 @@
     <!-- ======== 主区域 ======== -->
     <main class="main">
       <header class="chat-head pywebview-drag-region" id="chatHead">
-        <div style="min-width:0">
+        <div class="head-title">
           <div class="chat-title" id="chatTitle">新对话</div>
           <div class="chat-sub" id="chatSub">输入消息开始聊天 · Enter 发送</div>
         </div>
         <div class="head-actions">
-          <button class="btn-icon" id="btnSidebarToggle" title="收起侧边栏">☰</button>
-          <select id="providerSelect" title="AI 接口"></select>
-          <button class="btn-icon" id="btnHideChat2" data-icon="min" title="隐藏悬浮窗"></button>
           <button class="btn-icon" id="btnSettings2" title="设置">⚙</button>
+          <button class="btn-icon" id="btnHideChat2" data-icon="min" title="隐藏悬浮窗"></button>
         </div>
       </header>
 
@@ -53,7 +57,7 @@
              （接口自定义的欢迎词会在 init 后立刻替换上来）。 -->
       </div>
 
-      <!-- 输入区 -->
+      <!-- 输入区：浮在背景上的磨砂卡片，接口选择与发送都在卡片底部工具条里 -->
       <div class="composer" id="composer">
         <!-- 多模态：待发送图片缩略图 -->
         <div class="img-tray" id="imgTray" hidden></div>
@@ -61,14 +65,15 @@
           <span class="dot"></span><span class="dot"></span><span class="dot"></span>
           <span id="typingText">AI 正在思考…</span>
         </div>
-        <div class="composer-row">
-          <button class="btn btn-img" id="btnAddImage" title="上传图片" hidden>🖼</button>
-          <textarea id="input" rows="1" placeholder="输入消息，Enter 发送，Shift+Enter 换行"></textarea>
-          <button class="btn btn-primary" id="btnSend">发送</button>
+        <textarea id="input" rows="1" placeholder="输入消息，Enter 发送，Shift+Enter 换行"></textarea>
+        <div class="composer-bar">
+          <button class="btn btn-img" id="btnAddImage" title="上传图片" hidden>＋</button>
+          <span class="bar-gap"></span>
+          <select id="providerSelect" title="AI 接口"></select>
+          <button class="btn btn-send" id="btnSend" title="发送">↑</button>
         </div>
         <input type="file" id="imgFile" accept="image/*" multiple hidden>
         <div class="drop-mask" id="dropMask" hidden>松开放入图片</div>
-      </div>
       </div>
     </main>
 

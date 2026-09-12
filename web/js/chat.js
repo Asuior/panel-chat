@@ -758,7 +758,9 @@
   function setBusyUI(on) {
     S.typingRow.hidden = !on;
     S.btnSend.disabled = on;
-    S.btnSend.textContent = on ? '…' : '发送';
+    // 发送键是圆形图标按钮：空闲「↑」，生成中「…」
+    S.btnSend.textContent = on ? '…' : '↑';
+    S.btnSend.title = on ? '生成中…' : '发送';
   }
 
   /* ---------------- 编辑消息 ---------------- */
@@ -1151,11 +1153,12 @@
     S.composer = U.$('#composer');
   }
 
-  /* 侧边栏收起/展开：同时更新图标与文档类名 */
+  /* 侧边栏收起/展开：同时更新图标与文档类名。
+     收起后不是没有侧边栏，而是留一条窄边栏，这个按钮就落在窄边栏顶部。 */
   function applySidebar(visible) {
     if (!S.appRoot || !S.sidebarToggle) return;
     S.appRoot.classList.toggle('collapsed', !visible);
-    S.sidebarToggle.textContent = visible ? '☰' : '≫';
+    S.sidebarToggle.textContent = visible ? '«' : '»';
     S.sidebarToggle.title = visible ? '收起侧边栏' : '展开侧边栏';
   }
 
