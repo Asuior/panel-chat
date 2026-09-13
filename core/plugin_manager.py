@@ -88,6 +88,22 @@ def register_ai_provider(
     """
     def decorator(func: Callable) -> Callable:
         with _registry_lock:
+            previous = _registry.get(provider_id)
+            # 用「模块名 + 函数限定名」判断是否同一个插件。
+            # 不能用 func is previous["chat"]：load_plugins() 会重新 exec 模块，
+            # 同一个插件二次加载时函数已是**新的对象**，那样判断会误报成冲突。
+            identity = f"{func.__module__}.{getattr(func, '__qualname__', func.__name__)}"
+            if previous is not None and previous.get("identity") != identity:
+                # 注册表以 provider_id 为键，不同插件撞 id 时后来者会**静默覆盖**
+                # 先注册的：日志里“共加载 N 个”与界面上真正可选的接口数会对不上，
+                # 而两边都不报错，极难排查。这里明确告警，并把冲突双方都写出来。
+                log.warning(
+                    "AI 接口 id 冲突：'%s' 已被 %s 注册，现被 %s 覆盖。"
+                    "请修改其中一个插件的 provider_id，否则前一个接口不会出现在界面上。",
+                    provider_id,
+                    previous.get("module", "未知模块"),
+                    func.__module__,
+                )
             _registry[provider_id] = {
                 "id": provider_id,
                 "name": name,
@@ -98,6 +114,7 @@ def register_ai_provider(
                 "welcome_html": str(welcome_html or "").strip(),
                 "chat": func,
                 "module": func.__module__,
+                "identity": identity,
             }
         log.info("AI 插件已注册: %s (%s)", provider_id, name)
         return func
@@ -119,6 +136,56 @@ def load_plugin_config(plugin_file: str | os.PathLike) -> dict:
     except (OSError, ValueError) as exc:
         log.warning("读取插件配置失败 %s: %s", cfg_path, exc)
         return {}
+
+
+def coerce_params(params: dict | None, schema: dict | None) -> dict:
+    """
+    按插件声明的 params schema 把用户填写的参数值纠正为声明的类型。
+
+    必要性的根源：这些值来自 JSON 与表单，类型并不受约束。尤其是布尔——
+    Python 里任何非空字符串都是真值，所以字符串 ``"false"`` 会被判为 True。
+    用户把 bool 参数写成字符串（手改 settings.json、前端字符串化等）就会
+    静默地"开关失效"，而且这种错误极难排查。这里统一以 schema 的 ``type``
+    与 ``default`` 的类型为准做一次纠正。
+
+    未声明、或无法可靠判断的字段一律原样保留，不做猜测性转换。
+
+    :param params: 用户填写的参数字典（通常是 extra_body）
+    :param schema: 插件注册时声明的 params 字典
+    :return: 纠正后的新字典（不修改入参）
+    """
+    out = dict(params or {})
+    for key, spec in (schema or {}).items():
+        if key not in out or not isinstance(spec, dict):
+            continue
+        value = out[key]
+        declared = spec.get("type")
+
+        # 以 default 的实际类型兜底：插件写了裸值 {"thinking": True} 也能被识别
+        if declared is None:
+            default = spec.get("default")
+            if isinstance(default, bool):
+                declared = "boolean"
+            elif isinstance(default, (int, float)) and not isinstance(default, bool):
+                declared = "number"
+
+        if declared == "boolean" and not isinstance(value, bool):
+            if isinstance(value, str):
+                lowered = value.strip().lower()
+                if lowered in ("true", "1", "yes", "on"):
+                    out[key] = True
+                elif lowered in ("false", "0", "no", "off", ""):
+                    out[key] = False
+            elif isinstance(value, (int, float)):
+                out[key] = bool(value)
+        elif declared == "number" and isinstance(value, str) and value.strip():
+            try:
+                number = float(value)
+                # 整数值保持 int，避免 1.0 这种多余的小数点传出去
+                out[key] = int(number) if number.is_integer() else number
+            except ValueError:
+                pass  # 不是合法数字就原样保留，交给插件自己处理
+    return out
 
 
 def load_plugin_from_path(path: Path, plugin_root: Path) -> bool:
@@ -208,7 +275,9 @@ class PluginManager:
         chat_func = provider["chat"]
         if temperature is None:
             temperature = 0.7
-        extra = dict(extra_body) if isinstance(extra_body, dict) else {}
+        # 按 schema 把参数类型纠正到位（尤其是字符串 "false" → False），
+        # 这样每个插件拿到 extra_body 时都已经是声明好的类型
+        extra = coerce_params(extra_body, provider.get("params"))
         try:
             log.info("调用 AI 接口 %s (temperature=%.2f, 消息数=%d)",
                      provider_id, temperature, len(messages or []))

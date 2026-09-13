@@ -20,6 +20,10 @@ class GraphState(TypedDict):
     rather than replacing it.
 
     ``active_skill`` 记录当前激活的技能名;为空表示尚未加载技能。
+
+    ``extra_body`` 直接透传给 ChatDeepSeek 的请求体附加参数,
+    用于表达模型厂商的专有开关(如 DeepSeek 的
+    ``{"thinking": {"type": "enabled"|"disabled"}}``)。
     """
     messages: Annotated[list[BaseMessage], add_messages]
     final_reply: BaseMessage
@@ -28,20 +32,28 @@ class GraphState(TypedDict):
     api_key: str | None
     temperature: float | None
     base_url: str | None
+    extra_body: dict | None
 
 
 # 技能管理工具始终绑定给模型,用于「发现 / 激活」技能
 SKILL_TOOLS = [list_skills, load_skill]
 
+# 工具在模块加载时导入一次即可:注册表是模块级字典,import_tools() 每次都会
+# glob 整个 tools*/ 目录并重新 import。放在节点内部会在 Agent 的每一轮往返里
+# 重复执行(一轮对话可能调用 chat_node 多次)。
+_PERMANENT_TOOLS = import_tools("permanent")
+_DEMAND_TOOLS = import_tools("demand")
+# ToolNode 需要持有全部工具的引用,才能执行模型选中的任何一个
+_ALL_TOOLS = list({**_DEMAND_TOOLS, **_PERMANENT_TOOLS}.values()) + SKILL_TOOLS
+
 
 def chat_node(state: GraphState) -> dict[str, Any]:
-    base_tools = import_tools("permanent")  # 注册的基础工具(name -> tool)
-
     active_name = state.get("active_skill")
     model_name = state.get("model_name")
     api_key = state.get("api_key")
     temperature = state.get("temperature")
     base_url = state.get("base_url")
+    extra_body = state.get("extra_body") or {}
     os.environ["DEEPSEEK_API_BASE"] = base_url
     skill = get_skill(active_name) if active_name else None
 
@@ -50,17 +62,18 @@ def chat_node(state: GraphState) -> dict[str, Any]:
         # 注入技能执行规范 + 业务流程,作为 system 提示词
         messages = [SystemMessage(content=skill.build_prompt())] + messages
         # 仅绑定该技能允许使用的工具,加上技能管理工具
-        base_demand_tools = import_tools("demand")
-        tools = list(base_tools.values()) + [base_demand_tools[name] for name in skill.tools if
-                                             name in base_demand_tools] + SKILL_TOOLS
+        tools = list(_PERMANENT_TOOLS.values()) + [_DEMAND_TOOLS[name] for name in skill.tools if
+                                                   name in _DEMAND_TOOLS] + SKILL_TOOLS
     else:
-        tools = list(base_tools.values()) + SKILL_TOOLS
+        tools = list(_PERMANENT_TOOLS.values()) + SKILL_TOOLS
 
     llm = ChatDeepSeek(
         model=model_name,  # 或 "deepseek-reasoner"
         temperature=temperature,
         max_tokens=None,
-        api_key=api_key
+        api_key=api_key,
+        # 透传请求体附加参数(如 thinking 开关);为空时保持库的默认行为
+        extra_body=dict(extra_body) or None,
     ).bind_tools(tools)
 
     ai_msg = llm.invoke(messages)
@@ -68,10 +81,8 @@ def chat_node(state: GraphState) -> dict[str, Any]:
 
 
 def main(messages, model_name="deepseek-v4-flash", api_key=None, temperature=0,
-         base_url="https://api.deepseek.com/v1"):
-    # 全部工具 = 注册工具 + 技能管理工具
-    tools = list(import_tools("all").values()) + SKILL_TOOLS
-    tool_node = ToolNode(tools=tools)
+         base_url="https://api.deepseek.com/v1", extra_body=None):
+    tool_node = ToolNode(tools=_ALL_TOOLS)
 
     graph = StateGraph(GraphState)
     graph.add_node("chat", chat_node)
@@ -83,7 +94,7 @@ def main(messages, model_name="deepseek-v4-flash", api_key=None, temperature=0,
 
     result = graph.invoke(
         {"messages": messages, "model_name": model_name, "api_key": api_key, "temperature": temperature,
-         "base_url": base_url})
+         "base_url": base_url, "extra_body": extra_body or {}})
     return result.get("final_reply", {}).content
 
 

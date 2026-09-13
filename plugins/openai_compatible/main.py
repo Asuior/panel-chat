@@ -1,16 +1,33 @@
+"""OpenAI 兼容接口的 LangGraph Agent（对话 ↔ 工具循环）。
+
+与 plugins/deepseek、plugins/ModelScope 的循环结构一致，区别在**客户端选择**：
+
+    * 那两个插件用 ``langchain_deepseek.ChatDeepSeek``，因为它会把响应里的
+      ``reasoning_content``（思维链）解析到 ``additional_kwargs``，且会针对
+      DeepSeek 的接口形态修正请求体（如 assistant content 必须是字符串）。
+    * 本插件要服务于**任意** OpenAI 兼容端点（官方 OpenAI、vLLM、Ollama、
+      OpenRouter、各类中转等），因此不应绑定 DeepSeek 的专属行为，改用通用的
+      ``langchain_openai.ChatOpenAI``。
+
+思考模式等厂商专有参数不走 PARAMS_SCHEMA 的固定字段，而是由用户在
+「设置 → AI 接口」里直接填写 ``extra_body``（JSON），原样透传到请求体顶层，
+例如 ``{"thinking": {"type": "enabled"}}`` 或 ``{"reasoning_effort": "high"}``。
+"""
+from __future__ import annotations
+
 import os
 from typing import Annotated, Any
 
 from langchain_core.messages import BaseMessage, SystemMessage
-from langchain_deepseek import ChatDeepSeek
+from langchain_openai import ChatOpenAI
 from langgraph.graph import add_messages
 from langgraph.graph import END, START, StateGraph
 from langgraph.prebuilt import ToolNode, tools_condition
 from typing_extensions import TypedDict
 
-from plugins.ModelScope.skill_loader import load_skill as get_skill
-from plugins.ModelScope.tools.loader import import_tools
-from plugins.ModelScope.tools.tools_98es7d5.skill_tools import list_skills, load_skill
+from plugins.openai_compatible.skill_loader import load_skill as get_skill
+from plugins.openai_compatible.tools.loader import import_tools
+from plugins.openai_compatible.tools.tools_98es7d5.skill_tools import list_skills, load_skill
 
 
 class GraphState(TypedDict):
@@ -21,9 +38,8 @@ class GraphState(TypedDict):
 
     ``active_skill`` 记录当前激活的技能名;为空表示尚未加载技能。
 
-    ``extra_body`` 直接透传给 ChatDeepSeek 的请求体附加参数,
-    用于表达模型厂商的专有开关(如 ModelScope 上 Qwen 系列的
-    ``{"thinking": {"type": "enabled"|"disabled"}}``)。
+    ``extra_body`` 由用户直接填写的请求体附加参数(JSON),原样透传给
+    ChatOpenAI,用于表达厂商专有开关(thinking / reasoning_effort 等)。
     """
     messages: Annotated[list[BaseMessage], add_messages]
     final_reply: BaseMessage
@@ -53,8 +69,7 @@ def chat_node(state: GraphState) -> dict[str, Any]:
     api_key = state.get("api_key")
     temperature = state.get("temperature")
     base_url = state.get("base_url")
-    extra_body = state.get("extra_body") or {}
-    os.environ["DEEPSEEK_API_BASE"] = base_url
+    extra_body = dict(state.get("extra_body") or {})
     skill = get_skill(active_name) if active_name else None
 
     messages = list(state["messages"])
@@ -67,21 +82,28 @@ def chat_node(state: GraphState) -> dict[str, Any]:
     else:
         tools = list(_PERMANENT_TOOLS.values()) + SKILL_TOOLS
 
-    llm = ChatDeepSeek(
-        model=model_name,  # 或 "deepseek-reasoner"
+    # 官方 OpenAI 的推理模型(o 系列/gpt-5 等)会直接拒绝 temperature;
+    # 若用户显式配置了思考相关参数,就说明目标端点很可能是这类模型,
+    # 此时把 temperature 去掉,避免整个请求被 400 打回。
+    # 非推理模型不填 extra_body,行为与其它插件保持一致(照常带 temperature)。
+    if extra_body.get("thinking") is not None or extra_body.get("reasoning_effort") is not None:
+        temperature = None
+
+    llm = ChatOpenAI(
+        model=model_name,
         temperature=temperature,
-        max_tokens=None,
-        api_key=api_key,
-        # 透传请求体附加参数(如 thinking 开关);为空时保持库的默认行为
-        extra_body=dict(extra_body) or None,
+        api_key=api_key or "not-needed",  # vLLM / Ollama 等本地端点通常不校验
+        base_url=base_url,
+        # 透传请求体附加参数;为空时保持库的默认行为
+        extra_body=extra_body or None,
     ).bind_tools(tools)
 
     ai_msg = llm.invoke(messages)
     return {"messages": [ai_msg], "final_reply": ai_msg}
 
 
-def main(messages, model_name="Qwen/Qwen3.8-27B", api_key=None, temperature=0,
-         base_url="https://api-inference.modelscope.cn/v1", extra_body=None):
+def main(messages, model_name="gpt-4o-mini", api_key=None, temperature=0,
+         base_url="https://api.openai.com/v1", extra_body=None):
     tool_node = ToolNode(tools=_ALL_TOOLS)
 
     graph = StateGraph(GraphState)

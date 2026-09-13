@@ -1,21 +1,22 @@
 # -*- coding: utf-8 -*-
 """
-mock_provider —— 离线示例 AI 接口。
+DeepSeek 接口 —— 基于 LangGraph 的 Agent（对话 ↔ 工具循环）。
 
-不联网，直接回显/模拟回复。用于：
-    1. 无 API Key 时验证整条链路（聊天、会话保存）；
-    2. 作为编写新插件的极简参考。
+思考模式：
+    前端在「设置 → AI 接口」里渲染 PARAMS_SCHEMA 中的 thinking 开关，
+    取值经 extra_body 透传给 ChatDeepSeek，最终以
+    ``{"thinking": {"type": "enabled"|"disabled"}}`` 出现在请求体顶层
+    （见 plugins/deepseek/main.py 的 chat_node）。
 
 实现规范：
-    @register_ai_provider(...) 装饰 chat(messages, temperature) 函数即可。
+    @register_ai_provider(...) 装饰 chat(messages, temperature, extra_body) 函数即可。
 """
 from __future__ import annotations
 
 import os
-from pickle import FALSE
 from typing import Any
 
-from core.plugin_manager import register_ai_provider, load_plugin_config
+from core.plugin_manager import register_ai_provider, load_plugin_config, coerce_params
 from .main import main
 
 _CONFIG = load_plugin_config(__file__)
@@ -24,7 +25,7 @@ PARAMS_SCHEMA: dict[str, dict[str, Any]] = {
     "api_key": {
         "type": "string",
         "name": "API Key（接口秘钥）",
-        "description": "OpenAI / DeepSeek / Moonshot 等服务的密钥。敏感字段，仅保存在本机。",
+        "description": "DeepSeek 服务的密钥。敏感字段，仅保存在本机。",
         "sensitive": True,
         "default": "",
     },
@@ -37,8 +38,16 @@ PARAMS_SCHEMA: dict[str, dict[str, Any]] = {
     "base_url": {
         "type": "string",
         "name": "Base URL",
-        "description": "例如 https://api.openai.com/v1",
+        "description": "例如 https://api.deepseek.com/v1",
         "default": "https://api.deepseek.com/v1",
+    },
+    "thinking": {
+        "type": "boolean",
+        "name": "思考模式",
+        "description": (
+            "开启或关闭思考模式。"
+        ),
+        "default": True,
     },
 }
 
@@ -72,33 +81,34 @@ WELCOME_HTML = """
 )
 def chat(messages: list, temperature: float = 0.7, extra_body: dict | None = None) -> str:
     """
-    模拟对话：取出最后一条用户消息并构造回复。
+    调用 DeepSeek Agent 完成一轮对话（内部可能包含多次工具调用）。
 
     :param messages: [{"role": "system"|"user"|"assistant", "content": "..."}]
-    :param temperature: 保留参数（mock 不使用）
-    :param extra_body: 用户在设置页填写的自定义参数（api_key/base_url/model/...）
+    :param temperature: 采样温度（思考模式下 API 会忽略它）
+    :param extra_body: 用户在设置页填写的自定义参数（api_key/model/base_url/thinking）
     :return: 纯文本回复
     """
-    # 取最后一条 user 消息
-    # user_text = ""
-    # for m in reversed(messages or []):
-    #     if m.get("role") == "user":
-    #         user_text = m.get("content", "")
-    #         break
-    #
-    # if len(user_text) > 120:
-    #     user_text = user_text[:120] + "…"
-    extra = extra_body if isinstance(extra_body, dict) else {}
+    extra = coerce_params(extra_body, PARAMS_SCHEMA)
 
     def pick(key: str, env_name: str, default: Any):
-        """extra_body > 环境变量 > config.json > default"""
-        print(extra)
+        """extra_body > 环境变量 > config.json > default
+
+        注意判断方式：**只有 None 与空字符串**才算“用户没填”。
+        不能写成 ``if not val``，否则 False / 0 这些显式取值会被当成
+        未填写而回退到默认值，等于开关永远失效。
+        """
         val = extra.get(key)
         if val is None or (isinstance(val, str) and not val.strip()):
-            val = os.environ.get(env_name) or _CONFIG.get(key, default)
+            val = os.environ.get(env_name)
+            if val is None or (isinstance(val, str) and not val.strip()):
+                val = _CONFIG.get(key, default)
         return val
 
-    api_key = str(pick("api_key", "EXAMPLE_PROVIDER_API_KEY", "") or "").strip()
-    model = str(pick("model", "EXAMPLE_PROVIDER_MODEL", "deepseek-v4-flash"))
-    base_url = str(pick("base_url", "EXAMPLE_PROVIDER_BASE_URL", "https://api.deepseek.com/v1"))
-    return main(messages,model_name=model,api_key=api_key,temperature=temperature,base_url=base_url)
+    api_key = str(pick("api_key", "DEEPSEEK_API_KEY", "") or "").strip()
+    model = str(pick("model", "DEEPSEEK_MODEL", "deepseek-v4-flash"))
+    base_url = str(pick("base_url", "DEEPSEEK_API_BASE", "https://api.deepseek.com/v1"))
+    # 思考模式开关 → DeepSeek 的请求体参数格式
+    thinking = bool(pick("thinking", "DEEPSEEK_THINKING", True))
+    extra_request = {"thinking": {"type": "enabled" if thinking else "disabled"}}
+    return main(messages, model_name=model, api_key=api_key, temperature=temperature,
+                base_url=base_url, extra_body=extra_request)

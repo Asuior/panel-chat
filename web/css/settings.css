@@ -184,11 +184,20 @@ select.field option { color: #1c1f2b; background: #fff; }
 .param-item .pdesc { font-size: 11px; color: var(--text-secondary); margin: 3px 0 6px; line-height: 1.5; }
 .param-item input[type=text],
 .param-item input[type=password],
-.param-item input[type=number] {
+.param-item input[type=number],
+.param-item textarea {
   width: 100%; padding: 8px 10px; font-size: 13px;
   background: rgba(255, 255, 255, 0.65);
   border: 1px solid var(--glass-border); border-radius: 8px;
   color: #23263a;
   -webkit-user-select: text; user-select: text;
 }
-.param-item input:focus { border-color: rgba(124, 77, 255, 0.5); }
+/* JSON 参数（如 extra_body）：等宽字体 + 允许纵向拖动，便于核对括号 */
+.param-item textarea {
+  font-family: var(--font-mono); font-size: 12px; line-height: 1.5;
+  resize: vertical; min-height: 62px;
+}
+.param-item input:focus,
+.param-item textarea:focus { border-color: rgba(124, 77, 255, 0.5); }
+/* 参数表单里的开关靠左，与上方标签对齐（设置页其它开关是右侧布局） */
+.param-item .pp-ctl { display: flex; align-items: center; }

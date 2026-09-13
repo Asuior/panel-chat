@@ -21,7 +21,6 @@
 - [特性](#特性)
 - [快速开始](#快速开始)
 - [自定义 AI 接口](#自定义-ai-接口)
-- [内置接口 DeepSeek 与 ModelScope](#内置接口-deepseek-与-modelscope)
 - [给接口添加工具](#给接口添加工具)
 - [给接口添加技能](#给接口添加技能)
 - [配置项](#配置项)
@@ -136,20 +135,6 @@ def chat(messages: list, temperature: float = 0.7, extra_body: dict | None = Non
 | 旧式签名 | 只写 `chat(messages, temperature)` 也可以，主程序会检测参数个数并回退调用 |
 | 返回值 | 返回 `str`；非字符串会被 `str()` 转换 |
 
-## 内置接口 DeepSeek 与 ModelScope
-
-仓库自带两个接口：`plugins/deepseek/` 与 `plugins/ModelScope/`。
-**两者的代码结构相同**，都是同一个 LangGraph Agent，区别只在服务商与默认值：
-
-| | `deepseek` | `ModelScope` |
-|---|---|---|
-| 默认 Base URL | `https://api.deepseek.com/v1` | `https://api-inference.modelscope.cn/v1` |
-| 默认模型 | `deepseek-v4-flash` | `Qwen/Qwen3.8-27B` |
-| 图片输入 | 未声明 | 声明支持（`supports_images=True`） |
-| 专属欢迎页 | 有 | 无（使用内置默认欢迎页） |
-
-两者都使用 `langchain_deepseek.ChatDeepSeek` 作为客户端，通过 `DEEPSEEK_API_BASE`
-环境变量指定各自的 `base_url`，因此任何 OpenAI 兼容的服务都可以用同样方式接入。
 
 ## 给接口添加工具
 
@@ -206,7 +191,7 @@ import_tools("all")         # 返回两者合并
 - 新建 `.py` 文件并放入 `tools*/` 下的任意层级，重启后生效，不需要注册或改动配置；
 - 只有以 `tools` 开头的目录会被扫描（`tools_98es7d5` 是原有的随机后缀，可改为任意 `tools_xxx`）；
 - `plugins/<接口>/tools/loader.py` 中的注册表是模块级字典，**每个接口各有一份**。
-  两个内置接口各自带有一套 `tools/` 与 `skills/`；若两个接口要共用同一个工具，
+  三个内置接口各自带有一套 `tools/` 与 `skills/`；若多个接口要共用同一个工具，
   可在各自目录下各放一份，或把 `loader.py` 提取为共用模块。
 
 ### 技能管理工具

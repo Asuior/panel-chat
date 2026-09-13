@@ -132,8 +132,16 @@
       var spec = schema[key] || {};
       var type = spec.type || 'string';
       var isSensitive = !!spec.sensitive;
-      var cur = (saved[key] !== undefined && saved[key] !== null && saved[key] !== '')
-        ? saved[key] : (spec.default !== undefined ? spec.default : '');
+      var cur;
+      if (type === 'boolean') {
+        // false 是合法取值，不能像字符串那样被空值判断吞掉
+        cur = (saved[key] !== undefined && saved[key] !== null)
+          ? !!saved[key]
+          : (spec.default !== undefined ? !!spec.default : false);
+      } else {
+        cur = (saved[key] !== undefined && saved[key] !== null && saved[key] !== '')
+          ? saved[key] : (spec.default !== undefined ? spec.default : '');
+      }
 
       var item = document.createElement('div');
       item.className = 'param-item';
@@ -144,30 +152,41 @@
       var ctl = item.querySelector('.pp-ctl');
 
       if (type === 'boolean') {
+        // 复用设置页的开关控件（.switch 样式见 settings.css），不需要额外 JS 状态
         var sw = document.createElement('span');
         sw.className = 'switch';
         sw.innerHTML = '<input type="checkbox"' + (cur ? ' checked' : '') +
           '><span class="track"></span>';
         ctl.appendChild(sw);
-        sw.querySelector('input').addEventListener('change', function () {
-          saveVal(key, sw.querySelector('input').checked);
+        var swBox = sw.querySelector('input');
+        swBox.addEventListener('change', function () { saveVal(key, swBox.checked); });
+      } else if (type === 'number') {
+        var num = document.createElement('input');
+        num.type = 'number';
+        num.step = 'any';
+        num.value = cur;
+        num.addEventListener('change', function () {
+          var v = num.value;
+          saveVal(key, v === '' ? '' : Number(v));
         });
+        ctl.appendChild(num);
+      } else if (type === 'json') {
+        // 结构化参数（如 extra_body）：多行文本框便于核对括号与引号；
+        // 不是合法 JSON 时由后端报错并阻止本次请求，前端不给假阳性校验
+        var ta = document.createElement('textarea');
+        ta.rows = 3;
+        ta.spellcheck = false;
+        ta.placeholder = spec.placeholder || '{}';
+        ta.value = cur;
+        ta.addEventListener('change', function () { saveVal(key, ta.value); });
+        ctl.appendChild(ta);
       } else {
         var input = document.createElement('input');
-        if (type === 'number') {
-          input.type = 'number';
-          input.step = 'any';
-          input.value = cur;
-          input.addEventListener('change', function () {
-            var v = input.value;
-            saveVal(key, v === '' ? '' : Number(v));
-          });
-        } else {
-          input.type = (isSensitive || /key|secret|token|password/i.test(key))
-            ? 'password' : 'text';
-          input.value = cur;
-          input.addEventListener('change', function () { saveVal(key, input.value); });
-        }
+        // 敏感字段（声明了 sensitive 或字段名含 key/secret/token/password）用密码框
+        input.type = (isSensitive || /key|secret|token|password/i.test(key))
+          ? 'password' : 'text';
+        input.value = cur;
+        input.addEventListener('change', function () { saveVal(key, input.value); });
         ctl.appendChild(input);
       }
       form.appendChild(item);
