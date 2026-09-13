@@ -6,7 +6,7 @@ data/themes/*
 !data/conversations/.keep
 !data/backgrounds/.keep
 !data/themes/.keep
-!data/settings.json.template
+
 
 logs/
 .smoke_tmp/

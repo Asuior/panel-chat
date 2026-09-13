@@ -39,6 +39,48 @@ setup_logging()
 log = get_logger("main")
 
 # 延迟导入：先做依赖检查，给出友好提示 -------------------------------- #
+def force_dpi_awareness() -> None:
+    """把进程的 DPI 感知模式**在创建任何线程/窗口之前**定下来。
+
+    不这么做的话，托盘右键菜单的大小会飘（有时正常、有时边距明显偏大）：
+
+    * `python.exe` 的 manifest 里没有 `dpiAware`，进程默认是**不感知 DPI**；
+    * 真正把它改成 SystemAware 的是 .NET/WinForms —— 也就是 pywebview
+      建窗那一刻，发生在 GUI 线程上；
+    * 而 pystray 的托盘线程（`icon.run`）跟它是并发的，它那两个窗口
+      （`_hwnd` 收托盘消息、`_menu_hwnd` 当菜单宿主）有可能在改之前建出来，
+      也可能在改之后；
+    * `TrackPopupMenuEx` 是**按菜单宿主窗口的感知模式**画的：宿主是 unaware
+      时系统会把整张菜单按 96 DPI 画完再位图拉伸到 150%，于是又大又糊；
+      宿主 aware 时才是原生尺寸。
+
+    实测确认过：同一次运行里两个托盘窗口一个是 `SYSTEM_AWARE`(dpi=144)、
+    另一个是 `UNAWARE`(dpi=96)。这里统一设成 per-monitor v2
+    （也是 WebView2 期望的模式），所有窗口从一开始就用同一个上下文，竞态消失。
+    """
+    if sys.platform != "win32":
+        return
+    import ctypes
+
+    if not hasattr(ctypes, "windll"):
+        return
+    # Win10 1703+：DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 == -4
+    try:
+        if ctypes.windll.user32.SetProcessDpiAwarenessContext(ctypes.c_void_p(-4)):
+            return
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        ctypes.windll.shcore.SetProcessDpiAwareness(2)   # Win8.1+
+        return
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        ctypes.windll.user32.SetProcessDPIAware()        # Vista+
+    except Exception:  # noqa: BLE001
+        pass
+
+
 def check_dependencies() -> list[str]:
     """检查核心运行依赖，返回缺失列表。"""
     missing: list[str] = []
@@ -519,6 +561,9 @@ class AliceApp:
 
 
 def main() -> int:
+    # 必须最先执行：托盘线程会在建窗之前起来，感知模式定晚了菜单就会飘
+    force_dpi_awareness()
+
     missing = check_dependencies()
     if missing:
         names = "、".join(missing)
