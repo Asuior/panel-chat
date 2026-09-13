@@ -526,7 +526,7 @@
     var on = isMultimodal();
     S.btnAddImage.hidden = !on;
     S.input.placeholder = on
-      ? '输入消息… 可拖拽 / 粘贴 / 🖼 上传图片'
+      ? '输入消息，Enter 发送，Shift+Enter 换行'
       : '输入消息，Enter 发送，Shift+Enter 换行';
     if (!on && pendingImages.length) {
       pendingImages = [];
@@ -1174,13 +1174,13 @@
 
     U.$('#btnNewChat').addEventListener('click', newChat);
     U.$('#btnSettings').addEventListener('click', function () { openSettingsTab(null); });
-    U.$('#btnSettings2').addEventListener('click', function () { openSettingsTab(null); });
+    // U.$('#btnSettings2').addEventListener('click', function () { openSettingsTab(null); });
     U.$('#btnHideChat').addEventListener('click', function () {
       AI.call('hide_window', 'chat').catch(function (err) { console.error(err); });
     });
-    U.$('#btnHideChat2').addEventListener('click', function () {
-      AI.call('hide_window', 'chat').catch(function (err) { console.error(err); });
-    });
+    // U.$('#btnHideChat2').addEventListener('click', function () {
+    //   AI.call('hide_window', 'chat').catch(function (err) { console.error(err); });
+    // });
     S.sidebarToggle.addEventListener('click', function () {
       var cur = !(state.settings && state.settings.sidebar_visible === false);
       var next = !cur;
