@@ -16,15 +16,6 @@
 
 **Panel Chat** 是一个 Windows 桌面 AI 对话工具，通过系统托盘和全局热键使用。
 
-程序启动后默认只在托盘出现，不显示窗口。按全局热键（默认 `Ctrl+Alt+W`）或左键单击托盘图标显示窗口，
-再按一次隐藏。窗口无边框、始终置顶，使用工具窗口样式（`WS_EX_TOOLWINDOW`），
-不出现在任务栏与 Alt+Tab 中。
-
-AI 部分由插件提供：`plugins/` 下每个目录是一个接口。仓库自带 `deepseek` 与 `ModelScope` 两个接口，
-两者都是基于 LangGraph 的 Agent，可以调用 Python 工具（tools），并按需加载 Markdown 编写的技能（skills）。
-
-技术栈：Python + PyWebView 6（WebView2 / WinForms）+ 原生 HTML/JS。没有 Node、没有构建步骤、没有 Electron 运行时。
-
 ## 目录
 
 - [特性](#特性)
