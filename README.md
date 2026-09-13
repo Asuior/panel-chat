@@ -19,9 +19,7 @@
 ## 目录
 
 - [特性](#特性)
-- [界面与交互](#界面与交互)
 - [快速开始](#快速开始)
-- [目录结构](#目录结构)
 - [自定义 AI 接口](#自定义-ai-接口)
 - [内置接口 DeepSeek 与 ModelScope](#内置接口-deepseek-与-modelscope)
 - [给接口添加工具](#给接口添加工具)
@@ -52,36 +50,6 @@
 | **窗口记忆** | 窗口尺寸与位置写入 `settings.json`；Windows 11 下使用 DWM 系统圆角，Win10 忽略此项 |
 | **主题** | 所有样式通过 CSS 变量取值，复制一个主题目录即可新增主题（见 [主题与外观](#主题与外观)） |
 
-## 界面与交互
-
-```
-├─ 侧边栏：品牌 · ＋ 新对话 · 历史会话列表 ·（底部）设置 / 隐藏
-│     展开时 216px；收起后为 52px 窄边栏，展开按钮、新对话、设置、隐藏仍在栏内
-│
-├─ 头部：拖动此区域移动窗口，右侧为设置 / 隐藏按钮
-│
-├─ 消息区：渲染 Markdown；用户与 AI 消息分别配色
-│
-└─ 输入卡片：图片托盘（有图片时出现，最多 6 张）
-      ├ 输入框：随内容自动增高，最高 160px
-      └ 工具条：＋ 加图 ······ [接口 ▾] · ( ↑ ) 发送
-```
-
-窗口右边缘、下边缘、右下角各有自绘把手，可拖拽调整尺寸。
-
-| 操作 | 方式 |
-|---|---|
-| 显示 / 隐藏窗口 | 全局热键（默认 `Ctrl+Alt+W`），或左键单击托盘图标 |
-| 移动窗口 | 拖动顶部标题栏 |
-| 调整尺寸 | 拖右边缘 / 下边缘 / 右下角把手 |
-| 发送消息 | `Enter` 发送，`Shift+Enter` 换行 |
-| 发送图片 | 粘贴、拖入，或点击输入卡片左下角的 `＋` |
-| 重新生成 | 修改**最新一条**提问并发送 |
-| 截断后续消息 | 删除某条消息，其后所有消息一并删除 |
-| 打开设置 | 侧边栏底部「设置」，或头部右侧按钮 |
-
-窗口的拖动、缩放、圆角、置顶由 `core/window_controller.py` 通过 Win32 / DWM API 完成；
-前后端通过 `core/api.py` 上的一个 `js_api` 实例通信。
 
 ## 快速开始
 
@@ -103,78 +71,11 @@ pip install -r requirements.txt
 python main.py
 ```
 
-**首次运行**
-
-1. 程序在托盘出现（图标由代码绘制，不依赖外部资源）；
-2. `data/settings.json` 不存在时显示一次窗口，之后启动不再显示；
-3. 打开 **设置 → AI 接口**，选择接口并填写 `API Key` 后即可对话。
-
-将 `settings.json` 中的 `start_hidden` 改为 `false`，或在 **设置 → 通用** 中关闭「静默启动」，
-可让后续启动直接显示窗口（下次启动生效）。
-
 调试模式（打开 WebView2 开发者工具）：
 
 ```powershell
 $env:ALICE_DEBUG = "1"; python main.py
 ```
-
-**API Key 的存放位置**：按优先级从高到低依次为 —— ① 设置界面填写的自定义参数、
-② 环境变量、③ 插件目录下的 `config.json`。密钥保存在本机 `data/settings.json` 中。
-
-## 目录结构
-
-```
-panel-chat/
-├── main.py                     # 入口：DPI 感知、依赖检查、建窗、托盘、热键、事件循环
-├── core/
-│   ├── api.py                  # pywebview js_api：暴露给前端的全部函数
-│   ├── window_controller.py    # 窗口控制 + 位置记忆 + 任务栏策略 + 事件推送
-│   ├── plugin_manager.py       # 插件扫描 / 注册 / 路由（@register_ai_provider）
-│   ├── conversation.py         # 会话 CRUD + 索引 + 分支截断
-│   ├── image_store.py          # 对话图片：data URL ↔ 本地文件（内容哈希命名）
-│   ├── chat_payload.py         # 发送前的消息过滤（历史图片丢弃、字段净化）
-│   ├── prompt_manager.py       # 系统提示词分组与按序拼接
-│   ├── settings_manager.py     # settings.json 读写（深合并默认值）
-│   └── paths.py / logger.py    # 路径常量 / 日志
-├── plugins/                    # AI 接口插件，一个子目录一个接口
-│   ├── deepseek/               # LangGraph Agent：DeepSeek 官方 API
-│   │   ├── __init__.py         #   声明参数、图片能力、欢迎页
-│   │   ├── main.py             #   LangGraph 图：chat ↔ tools
-│   │   ├── skill_loader.py     #   技能解析器
-│   │   ├── skills/*.md         #   技能文件
-│   │   └── tools/
-│   │       ├── loader.py       #   工具注册器 @tool_resigter
-│   │       └── tools_xxx/*.py  #   工具本体（自动扫描）
-│   └── ModelScope/             # 同一套 Agent，使用 ModelScope 推理服务
-├── web/                        # 前端（原生 JS，无构建）
-│   ├── index.html
-│   ├── css/  js/
-│   └── assets/                 # 背景图 / 图标 / 对话图片
-├── themes/
-│   └── glassmorphism/          # 默认主题（CSS 变量声明）
-├── data/                       # 运行时生成：会话、索引、设置、提示词
-└── logs/                       # app.log（2MB 轮转）
-```
-
-### 数据文件
-
-```
-data/
-├── conversations/{uuid}.json    每个对话一个文件（含全部消息）
-├── history_index.json           索引 {id: {title, preview, updated_at}}
-├── settings.json                全局配置
-└── prompts.json                 提示词分组 {groups: [...]}
-
-web/assets/
-├── backgrounds/                 上传的背景图
-├── icons/                       图标
-└── conversations/<对话id>/<内容哈希>.<ext>
-                                 多模态消息的图片本体。对话 JSON 只记录相对路径，
-                                 图片与页面同源，前端直接以 <img src> 渲染
-```
-
-发送请求时由 `core/chat_payload.py` 过滤消息，只有「最后一条用户消息」的图片会随本次请求发出。
-消息被删除或分支截断后，不再被引用的图片会被回收。
 
 ## 自定义 AI 接口
 
@@ -250,26 +151,6 @@ def chat(messages: list, temperature: float = 0.7, extra_body: dict | None = Non
 
 两者都使用 `langchain_deepseek.ChatDeepSeek` 作为客户端，通过 `DEEPSEEK_API_BASE`
 环境变量指定各自的 `base_url`，因此任何 OpenAI 兼容的服务都可以用同样方式接入。
-
-### Agent 的执行流程
-
-`main.py` 中是一张 LangGraph 状态图，`chat` 与 `tools` 两个节点循环执行：
-
-```mermaid
-graph LR
-    START([用户消息]) --> chat["chat 节点<br/>绑定工具 + 注入技能提示词"]
-    chat -->|"模型返回 tool_calls"| tools["ToolNode<br/>执行 Python 工具"]
-    tools --> chat
-    chat -->|"模型返回最终回答"| FIN([返回文本])
-```
-
-- **`chat` 节点**：组装要绑定给模型的工具列表，调用一次 LLM。
-- **`tools_condition`**：模型返回 tool_calls 时转到 `tools` 节点，否则结束。
-- **`tools` 节点**：`ToolNode` 依次执行工具，把返回值作为 `ToolMessage` 追加到消息列表，再回到 `chat`。
-- 图状态中额外带 `active_skill` 字段，记录当前激活的技能（见「给接口添加技能」）。
-
-新增服务商的做法：复制 `plugins/ModelScope/` 并改名，修改 `main.py` 中的默认 `base_url` / `model`
-以及 `__init__.py` 中的 `provider_id` / `params` 默认值，`tools/` 与 `skills/` 目录会一并复制过去。
 
 ## 给接口添加工具
 
@@ -384,19 +265,6 @@ flow:
 | `flow` | 业务流程步骤（YAML 列表），渲染为 `【业务流程】1. … 2. …` 拼接在正文之前 |
 | 正文 | 面向模型的执行规范，作为 system 消息注入 |
 
-### 生效流程
-
-1. 模型通过系统自带的 `list_skills` 工具获得所有技能及其 `description`；
-2. 判断需要哪个技能后调用 `load_skill("weather_query")`；
-3. 该工具返回技能概要，并把技能名写入图状态的 `active_skill`；
-4. **下一轮** `chat` 节点检测到 `active_skill` 非空，于是：
-   - 把 `Skill.build_prompt()`（`flow` 与正文）作为 `SystemMessage` 插入消息列表最前面；
-   - 工具列表替换为「全部 `permanent` 工具 + 本技能在 `tools:` 中列出的 `demand` 工具 + 技能管理工具」。
-
-因此技能的指令只在被加载后才占用上下文，`demand` 工具也不会在未加载技能时出现在工具表中。
-
-新增技能不需要修改代码：往 `plugins/<接口>/skills/` 放入一个 `.md` 文件并重启即可。
-单个技能文件解析失败会被跳过并记录日志，不影响其余技能加载。
 
 ## 配置项
 
@@ -471,16 +339,6 @@ themes/my-theme/
 默认主题中另有一组深色变量（`:root[data-contrast="dark"]`）。界面目前没有切换它的入口，
 为 `document.documentElement` 添加 `data-contrast="dark"` 后即可生效。
 
-### 背景图 / 头像 / 名称
-
-| 修改项 | 位置 |
-|---|---|
-| 聊天背景图 | **设置 → 外观 → 上传背景图**（保存到 `web/assets/backgrounds/`，路径写入 `settings.background_image`） |
-| 用户头像 / 名称 | **设置 → 外观 → 我的资料**（点击头像上传，名称最长 20 字） |
-| AI 头像 / 名称 | **设置 → 外观 → AI 资料** |
-
-设置弹层打开时背景图大部分被遮挡：弹层表面使用 `--surface`（默认 90% 不透明）以保证文字可读，
-可调小该变量的 alpha。弹层高度固定为 `min(560px, 78vh)`，切换页签不会改变窗口尺寸。
 
 ### 修改样式时的注意事项
 
@@ -489,37 +347,4 @@ themes/my-theme/
 - `theme.css` 中的相对 `url()` 相对样式表解析（该文件由 `<link>` 动态加载），不是相对 `index.html`；
 - `background_image` 在前端会被转换为绝对 URL 后写入 CSS 变量，因此相对路径与绝对路径均可。
 
-## 开发与测试
 
-纯 Python 与原生前端，修改 `web/` 下的 CSS/JS 后重启程序即可，没有编译步骤。
-
-```powershell
-python scripts/smoke_core.py         # 无头冒烟测试：插件/会话/提示词/设置/图片/Api/窗口控制器
-node   scripts/js_smoke.cjs          # Markdown 渲染器
-node   scripts/js_welcome_smoke.cjs  # 接口自带欢迎页及切换行为
-```
-
-`scripts/` 为本地开发脚本，已被 `.gitignore` 忽略，克隆仓库后不存在。
-
-**相关文件**
-
-- `core/plugin_manager.py` —— 插件注册与路由的约定；
-- `plugins/deepseek/main.py` —— Agent 的完整实现；
-- `core/api.py` —— 前后端接口清单，各方法的 docstring 说明其行为。
-
-## 已知限制与 FAQ
-
-**窗口隐藏后如何找回？**
-按全局热键，或左键单击托盘图标。若托盘与热键都不可用，程序会保留任务栏按钮作为入口 ——
-窗口不进任务栏也不进 Alt+Tab，隐藏后没有其他找回方式。
-
-**窗口圆角半径可以指定吗？**
-不能。使用的是 DWM 系统圆角，只有约 8px 与 4px 两档，带抗锯齿。
-需要更大半径只能改用 `SetWindowRgn`，但边缘没有抗锯齿。
-
-**发送给 AI 的请求包含哪些内容？**
-发送前会统一过滤：只保留 `role` 与 `content`（`timestamp`、`images` 等本地字段不外传），
-历史消息中的图片一律丢弃并降级为文本，只有最新一条用户消息的图片会随本次请求发出。
-
-**代码块是完整的语法高亮吗？**
-不是，只做关键字高亮，不引入高亮库。
