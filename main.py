@@ -377,8 +377,8 @@ class AliceApp:
             pystray.MenuItem("退出程序", lambda _i, _it: self.quit()),
         )
 
-        image = self._make_tray_icon()
-
+        # image = self._make_tray_icon()
+        image = Image.open("web/assets/icons/icon.png")
         icon = pystray.Icon("alice-ai-assistant", image, "Alice AI 助手", menu)
         self._tray = icon
         self._tray_thread = threading.Thread(target=icon.run, daemon=True, name="tray")
@@ -549,7 +549,7 @@ class AliceApp:
         debug = os.environ.get("ALICE_DEBUG") == "1"
         log.info("进入 GUI 事件循环（debug=%s）", debug)
         try:
-            webview.start(func=self._on_gui_started, gui="edgechromium", debug=debug)
+            webview.start(func=self._on_gui_started, gui="edgechromium", debug=debug,)
         except Exception as exc:  # noqa: BLE001
             log.exception("GUI 启动失败")
             print(f"\n[错误] GUI 启动失败：{exc}")
