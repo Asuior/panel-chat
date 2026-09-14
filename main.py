@@ -38,6 +38,12 @@ from core.logger import get_logger, setup_logging  # noqa: E402
 setup_logging()
 log = get_logger("main")
 
+# 热键看门狗参数（睡眠/休眠唤醒后重装 WH_KEYBOARD_LL 钩子）
+# 巡检间隔；相邻两次巡检的墙钟间隔超过 POLL * FACTOR 即认定发生过睡眠。
+HOTKEY_WATCH_POLL_SECONDS = 20.0
+HOTKEY_WATCH_SLEEP_GAP_FACTOR = 2.5
+
+
 # 延迟导入：先做依赖检查，给出友好提示 -------------------------------- #
 def force_dpi_awareness() -> None:
     """把进程的 DPI 感知模式**在创建任何线程/窗口之前**定下来。
@@ -198,6 +204,7 @@ class AliceApp:
         self.api = backend["api"]
         self.windows: dict[str, object] = {}
         self._hotkey_handles: list = []
+        self._hotkey_watchdog: threading.Thread | None = None
         self._tray = None
         self._tray_thread: threading.Thread | None = None
         self._quitting = threading.Event()
@@ -401,8 +408,15 @@ class AliceApp:
     # ------------------------------------------------------------------ #
     # 全局热键
     # ------------------------------------------------------------------ #
-    def start_hotkeys(self):
-        """注册全局热键。注册失败会记录在案，供任务栏降级判断使用。"""
+    def _install_hotkey(self, key) -> None:
+        """
+        注册单个全局热键（幂等：先解绑同一 key 的旧句柄再重新绑定）。
+
+        单独抽出来是为了**睡眠唤醒后能重新注册**：keyboard 库是用
+        SetWindowsHookEx 装的 WH_KEYBOARD_LL 低级键盘钩子，而 Windows
+        在睡眠/休眠后不会保留这个钩子，于是唤醒后按键再也进不来、
+        热键彻底失灵（详见 self.start_hotkey_watchdog 的说明）。
+        """
         try:
             import keyboard
         except ImportError:
@@ -411,12 +425,6 @@ class AliceApp:
             return
 
         WIN_CHAT = self.b["WIN_CHAT"]
-        hotkeys = self.settings.get("hotkeys") or {}
-        key = hotkeys.get("toggle_chat")
-        if not key:
-            log.warning("未配置 toggle_chat 热键。")
-            self._warn_degraded("未配置全局热键 toggle_chat")
-            return
 
         def _cb():
             try:
@@ -424,13 +432,110 @@ class AliceApp:
             except Exception as exc:  # noqa: BLE001
                 log.warning("热键切换窗口失败: %s", exc)
 
+        # 只解绑**同一个 key** 的旧句柄，避免同一个热键叠加出多份回调；
+        # 其它 key 的句柄保持不动。
+        keep = []
+        for handle, old_key in self._hotkey_handles:
+            if old_key != key:
+                keep.append((handle, old_key))
+                continue
+            try:
+                keyboard.remove_hotkey(handle)
+            except Exception as exc:  # noqa: BLE001
+                log.debug("解绑旧热键句柄失败（忽略）: %s", exc)
+
         try:
             handle = keyboard.add_hotkey(key, _cb)
-            self._hotkey_handles.append((handle, key))
+            keep.append((handle, key))
+            self._hotkey_handles = keep
             log.info("全局热键已注册: %s -> %s", key, WIN_CHAT)
         except Exception as exc:  # noqa: BLE001
+            self._hotkey_handles = keep
             log.warning("热键 %s 注册失败（可能被占用或权限不足）: %s", key, exc)
             self._warn_degraded(f"热键 {key} 注册失败（可能被占用或权限不足）")
+
+    def start_hotkeys(self):
+        """注册全局热键。注册失败会记录在案，供任务栏降级判断使用。"""
+        hotkeys = self.settings.get("hotkeys") or {}
+        key = hotkeys.get("toggle_chat")
+        if not key:
+            log.warning("未配置 toggle_chat 热键。")
+            self._warn_degraded("未配置全局热键 toggle_chat")
+            return
+        self._install_hotkey(key)
+
+    # ------------------------------------------------------------------ #
+    # 睡眠唤醒后自愈
+    # ------------------------------------------------------------------ #
+    def start_hotkey_watchdog(self):
+        """
+        启动"睡眠唤醒后重装热键"的看门狗（仅 Windows 需要）。
+
+        为什么需要它：
+            keyboard 库用 SetWindowsHookEx 安装 WH_KEYBOARD_LL 低级键盘钩子
+            （见 keyboard/_winkeyboard.py 的 prepare_intercept）。Windows 在
+            睡眠/休眠 → 唤醒之后**不会保留**这个钩子，而库自己的监听线程
+            （跑 GetMessage 消息循环）照样活着，所以既不会报错、也不会重装。
+            结果就是：唤醒后所有按键都不再进入回调，热键静默失灵。
+
+            对本程序尤其致命：窗口不进任务栏、隐藏后只能靠热键或托盘找回。
+
+        检测方式用**墙钟跳变**，而不是"记录按键"：
+            看门狗每 POLL 秒醒一次，正常情况下相邻两次间隔约等于 POLL；
+            如果机器睡了一段时间，唤醒后第一次测量的间隔会是整个睡眠时长，
+            远大于 POLL。这个方法不依赖用户是否在敲键盘，也就不会误判
+            "用户一直没按键"为故障。
+        """
+        if sys.platform != "win32":
+            return
+        if self._hotkey_watchdog is not None:
+            return
+
+        def _loop():
+            import time
+
+            POLL = HOTKEY_WATCH_POLL_SECONDS
+            GAP = POLL * HOTKEY_WATCH_SLEEP_GAP_FACTOR
+
+            last = time.monotonic()
+            while not self._quitting.wait(POLL):
+                now = time.monotonic()
+                gap = now - last
+                last = now
+                if gap <= GAP:
+                    continue
+                log.info("检测到系统可能刚从睡眠/休眠恢复（静默 %.0fs），重新注册全局热键", gap)
+                try:
+                    self._reinstall_hotkeys()
+                except Exception:  # noqa: BLE001
+                    log.exception("唤醒后重新注册热键失败")
+
+        self._hotkey_watchdog = threading.Thread(
+            target=_loop, daemon=True, name="hotkey-watchdog")
+        self._hotkey_watchdog.start()
+        log.info("热键看门狗已启动（睡眠唤醒后自动重新注册）")
+
+    def _reinstall_hotkeys(self) -> None:
+        """重新注册全部已配置的热键。
+
+        正常情况下按当前已注册的 key 重装；若此前一个都没注册上
+        （例如启动时被别的程序占用），则把配置里的热键都再试一遍 ——
+        唤醒往往正是重新抢回热键的时机。
+        """
+        keys = [k for _h, k in self._hotkey_handles]
+        if not keys:
+            hotkeys = self.settings.get("hotkeys") or {}
+            keys = [v for v in hotkeys.values() if v]
+        if not keys:
+            log.warning("热键看门狗：没有可重新注册的热键")
+            return
+        for key in keys:
+            self._install_hotkey(key)
+        if self._hotkey_handles:
+            log.info("唤醒后热键已恢复: %s", ", ".join(k for _h, k in self._hotkey_handles))
+        else:
+            log.warning("唤醒后热键仍未能注册，可能已被其它程序占用")
+
 
     # ------------------------------------------------------------------ #
     def quit(self):
@@ -545,6 +650,8 @@ class AliceApp:
         self.build_windows()
         self.start_hotkeys()
         self.start_tray()
+        # 睡眠/休眠唤醒后 WH_KEYBOARD_LL 钩子会失效，靠看门狗重新注册
+        self.start_hotkey_watchdog()
 
         debug = os.environ.get("ALICE_DEBUG") == "1"
         log.info("进入 GUI 事件循环（debug=%s）", debug)
