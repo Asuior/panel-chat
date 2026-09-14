@@ -129,10 +129,10 @@ def chat(messages: list, temperature: float = 0.7, extra_body: dict | None = Non
 
 | 参数 | 说明 |
 |---|---|
-| `params` | 前端据此渲染参数表单；用户填写的值以 `extra_body` 作为第三个参数传入 `chat()`。字段类型支持 `string`（默认）、`number`（数字输入框）、`boolean`（开关）；设置 `"sensitive": true` 或键名包含 key / secret / token / password 的字段渲染为密码框。用户未修改的字段会补上 `default`，用户显式清空的字段保持空串，使插件内部的「环境变量 / config.json」回退链继续生效 |
+| `params` | 前端据此渲染参数表单；用户填写的值以 `extra_body` 作为第三个参数传入 `chat()`。字段类型支持 `string`（默认）、`number`（数字输入框）、`boolean`（开关）、`json`（多行文本框，用于填写如 `extra_body` 这类结构化参数）；设置 `"sensitive": true` 或键名包含 key / secret / token / password 的字段渲染为密码框。用户未修改的字段会补上 `default`，用户显式清空的字段保持空串，使插件内部的「环境变量 / config.json」回退链继续生效 |
 | `supports_images` | 声明该接口是否支持图片输入。用户在设置中可单独关闭，实际是否携带图片由 `settings.multimodal` 的覆盖值决定 |
 | `welcome_html` | 仅在**当前会话没有消息**时替换内置欢迎页的内容区。外层 `.welcome` 容器保留，因此沿用其居中布局与主题变量，同时额外带 `.custom` 类；顶部 `.big` 头像由程序渲染、跟随「设置 → 外观」中的 AI 头像，不要自行编写。片段中带 `data-tab="ai"` 的元素会自动绑定为「跳转对应设置页签」的按钮。该 HTML 以 `innerHTML` 原样注入，其中的 `<script>` 不执行，但内联事件属性会生效 |
-| 旧式签名 | 只写 `chat(messages, temperature)` 也可以，主程序会检测参数个数并回退调用 |
+| 函数签名 | **必须**是 `chat(messages, temperature, extra_body)`。主程序不再检测参数个数、也不再回退调用双参签名：不需要参数的插件请照样保留第三个参数（收到一个空字典即可） |
 | 返回值 | 返回 `str`；非字符串会被 `str()` 转换 |
 
 

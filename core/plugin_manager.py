@@ -261,9 +261,17 @@ class PluginManager:
         """
         路由到对应插件的 chat() 执行。
 
-        :param extra_body: 用户在接口设置页填写的自定义参数字典；
-            优先以 chat(messages, temperature, extra_body) 调用；
-            若插件只声明了 2 个参数（旧插件），自动回退为不带 extra_body 调用。
+        :param extra_body: 用户在接口设置页填写的自定义参数字典。
+
+        插件规范（**唯一**签名，不接受更少参数）::
+
+            chat(messages, temperature, extra_body) -> str
+
+        这里刻意**不做"参数个数不足就回退调用"的兼容**：判据只能是捕获
+        TypeError，而插件内部的任何 TypeError（例如服务端返回 choices=null 时
+        langchain 抛出的类型错误）都会被误判成"这是旧插件"，于是丢掉
+        extra_body 重试一次 —— 那会让 api_key 凭空消失，最终报出与真实原因
+        无关的 "Missing credentials"。异常必须原样抛出。
 
         :raises KeyError: provider 不存在
         """
@@ -281,11 +289,7 @@ class PluginManager:
         try:
             log.info("调用 AI 接口 %s (temperature=%.2f, 消息数=%d)",
                      provider_id, temperature, len(messages or []))
-            try:
-                result = chat_func(messages or [], float(temperature), extra)
-            except TypeError:
-                # 旧插件：chat(messages, temperature)
-                result = chat_func(messages or [], float(temperature))
+            result = chat_func(messages or [], float(temperature), extra)
             if not isinstance(result, str):
                 result = str(result)
             return result
