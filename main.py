@@ -38,11 +38,6 @@ from core.logger import get_logger, setup_logging  # noqa: E402
 setup_logging()
 log = get_logger("main")
 
-# 热键看门狗参数（睡眠/休眠唤醒后重装 WH_KEYBOARD_LL 钩子）
-# 巡检间隔；相邻两次巡检的墙钟间隔超过 POLL * FACTOR 即认定发生过睡眠。
-HOTKEY_WATCH_POLL_SECONDS = 20.0
-HOTKEY_WATCH_SLEEP_GAP_FACTOR = 2.5
-
 
 # 延迟导入：先做依赖检查，给出友好提示 -------------------------------- #
 def force_dpi_awareness() -> None:
@@ -203,8 +198,10 @@ class AliceApp:
         self.controller = backend["controller"]
         self.api = backend["api"]
         self.windows: dict[str, object] = {}
+        # 主用原生热键（core.hotkey_manager）；_hotkey_handles 仅用于
+        # keyboard 钩子回退路径，两者共用"是否有热键可用"的判断
+        self._hotkey_manager = None
         self._hotkey_handles: list = []
-        self._hotkey_watchdog: threading.Thread | None = None
         self._tray = None
         self._tray_thread: threading.Thread | None = None
         self._quitting = threading.Event()
@@ -408,21 +405,28 @@ class AliceApp:
     # ------------------------------------------------------------------ #
     # 全局热键
     # ------------------------------------------------------------------ #
-    def _install_hotkey(self, key) -> None:
+    def _install_native_hotkeys(self, key: str) -> bool:
         """
-        注册单个全局热键（幂等：先解绑同一 key 的旧句柄再重新绑定）。
+        用 Windows 原生 ``RegisterHotKey`` 注册全局热键（主路径）。
 
-        单独抽出来是为了**睡眠唤醒后能重新注册**：keyboard 库是用
-        SetWindowsHookEx 装的 WH_KEYBOARD_LL 低级键盘钩子，而 Windows
-        在睡眠/休眠后不会保留这个钩子，于是唤醒后按键再也进不来、
-        热键彻底失灵（详见 self.start_hotkey_watchdog 的说明）。
+        为什么不用 keyboard 钩子（历史 bug 的根因）：
+            ``keyboard`` 用 ``SetWindowsHookEx(WH_KEYBOARD_LL)`` 装低级键盘
+            钩子，Windows 在睡眠/休眠唤醒后**不会保留**该钩子；而那个库只在
+            listener 初始化时装一次钩子，``remove_hotkey`` / ``add_hotkey``
+            只增删回调、从不重装钩子，于是唤醒后热键静默失灵且毫无报错。
+
+            ``RegisterHotKey`` 由系统窗口管理器解析按键后以 ``WM_HOTKEY``
+            直接投递本进程，完全不涉及键盘钩子，因此不受睡眠影响。
+
+        :return: 是否成功注册
         """
+        if sys.platform != "win32":
+            return False
         try:
-            import keyboard
-        except ImportError:
-            log.warning("keyboard 不可用，全局热键未注册。")
-            self._warn_degraded("keyboard 库不可用，全局热键未注册")
-            return
+            from core.hotkey_manager import HotkeyManager
+        except ImportError as exc:
+            log.warning("原生热键模块不可用: %s", exc)
+            return False
 
         WIN_CHAT = self.b["WIN_CHAT"]
 
@@ -432,8 +436,56 @@ class AliceApp:
             except Exception as exc:  # noqa: BLE001
                 log.warning("热键切换窗口失败: %s", exc)
 
-        # 只解绑**同一个 key** 的旧句柄，避免同一个热键叠加出多份回调；
-        # 其它 key 的句柄保持不动。
+        def _on_resume():
+            # 系统唤醒后主动重装一次：RegisterHotKey 的注册一般会被系统保留，
+            # 这一步成本极低，用来兜住"注册曾被别的程序抢走"这类极端情况。
+            mgr = self._hotkey_manager
+            if mgr is None:
+                return
+            try:
+                n = mgr.reinstall([key])
+                log.info("系统唤醒：已重装原生热键 %s（成功 %d 个）", key, n)
+            except Exception:  # noqa: BLE001
+                log.exception("唤醒后重装原生热键失败")
+
+        manager = HotkeyManager(on_resume=_on_resume)
+        if not manager.start():
+            log.warning("原生热键不可用，稍后回退到 keyboard 钩子")
+            return False
+        if not manager.register(key, _cb):
+            log.warning("原生热键 %s 注册失败（可能被占用），稍后回退", key)
+            manager.stop()
+            return False
+        self._hotkey_manager = manager
+        log.info("全局热键已注册（原生 RegisterHotKey）: %s -> %s", key, WIN_CHAT)
+        return True
+
+    def _install_hook_hotkey(self, key: str) -> bool:
+        """
+        回退路径：用 ``keyboard`` 钩子注册热键。
+
+        仅在原生 ``RegisterHotKey`` 不可用（非 Windows）或注册失败
+        （热键被其它程序占用）时使用。
+
+        **已知限制**：钩子方案在睡眠/休眠唤醒后会失效，且该库不会自愈，
+        因此这条路径下唤醒后需要重启程序才能恢复热键。
+        """
+        try:
+            import keyboard
+        except ImportError:
+            log.warning("keyboard 不可用，全局热键未注册。")
+            self._warn_degraded("keyboard 库不可用，全局热键未注册")
+            return False
+
+        WIN_CHAT = self.b["WIN_CHAT"]
+
+        def _cb():
+            try:
+                self.controller.toggle(WIN_CHAT)
+            except Exception as exc:  # noqa: BLE001
+                log.warning("热键切换窗口失败: %s", exc)
+
+        # 同一个 key 重复注册时先解绑旧句柄，避免叠加出多份回调
         keep = []
         for handle, old_key in self._hotkey_handles:
             if old_key != key:
@@ -443,99 +495,47 @@ class AliceApp:
                 keyboard.remove_hotkey(handle)
             except Exception as exc:  # noqa: BLE001
                 log.debug("解绑旧热键句柄失败（忽略）: %s", exc)
-
         try:
             handle = keyboard.add_hotkey(key, _cb)
             keep.append((handle, key))
             self._hotkey_handles = keep
-            log.info("全局热键已注册: %s -> %s", key, WIN_CHAT)
+            log.info("全局热键已注册（keyboard 钩子回退）: %s -> %s", key, WIN_CHAT)
+            return True
         except Exception as exc:  # noqa: BLE001
             self._hotkey_handles = keep
             log.warning("热键 %s 注册失败（可能被占用或权限不足）: %s", key, exc)
             self._warn_degraded(f"热键 {key} 注册失败（可能被占用或权限不足）")
+            return False
 
     def start_hotkeys(self):
-        """注册全局热键。注册失败会记录在案，供任务栏降级判断使用。"""
+        """注册全局热键：优先原生 RegisterHotKey，失败再回退 keyboard 钩子。"""
         hotkeys = self.settings.get("hotkeys") or {}
         key = hotkeys.get("toggle_chat")
         if not key:
             log.warning("未配置 toggle_chat 热键。")
             self._warn_degraded("未配置全局热键 toggle_chat")
             return
-        self._install_hotkey(key)
-
-    # ------------------------------------------------------------------ #
-    # 睡眠唤醒后自愈
-    # ------------------------------------------------------------------ #
-    def start_hotkey_watchdog(self):
-        """
-        启动"睡眠唤醒后重装热键"的看门狗（仅 Windows 需要）。
-
-        为什么需要它：
-            keyboard 库用 SetWindowsHookEx 安装 WH_KEYBOARD_LL 低级键盘钩子
-            （见 keyboard/_winkeyboard.py 的 prepare_intercept）。Windows 在
-            睡眠/休眠 → 唤醒之后**不会保留**这个钩子，而库自己的监听线程
-            （跑 GetMessage 消息循环）照样活着，所以既不会报错、也不会重装。
-            结果就是：唤醒后所有按键都不再进入回调，热键静默失灵。
-
-            对本程序尤其致命：窗口不进任务栏、隐藏后只能靠热键或托盘找回。
-
-        检测方式用**墙钟跳变**，而不是"记录按键"：
-            看门狗每 POLL 秒醒一次，正常情况下相邻两次间隔约等于 POLL；
-            如果机器睡了一段时间，唤醒后第一次测量的间隔会是整个睡眠时长，
-            远大于 POLL。这个方法不依赖用户是否在敲键盘，也就不会误判
-            "用户一直没按键"为故障。
-        """
-        if sys.platform != "win32":
+        if self._install_native_hotkeys(key):
             return
-        if self._hotkey_watchdog is not None:
-            return
+        log.warning("回退到 keyboard 钩子注册热键 %s（该方案唤醒后可能失效）", key)
+        self._install_hook_hotkey(key)
 
-        def _loop():
-            import time
+    def stop_hotkeys(self) -> None:
+        """退出时卸载热键（两条路径都清）。"""
+        if self._hotkey_manager is not None:
+            try:
+                self._hotkey_manager.stop()
+            except Exception as exc:  # noqa: BLE001
+                log.debug("停止原生热键失败: %s", exc)
+            self._hotkey_manager = None
+        for handle, _key in self._hotkey_handles:
+            try:
+                import keyboard
 
-            POLL = HOTKEY_WATCH_POLL_SECONDS
-            GAP = POLL * HOTKEY_WATCH_SLEEP_GAP_FACTOR
-
-            last = time.monotonic()
-            while not self._quitting.wait(POLL):
-                now = time.monotonic()
-                gap = now - last
-                last = now
-                if gap <= GAP:
-                    continue
-                log.info("检测到系统可能刚从睡眠/休眠恢复（静默 %.0fs），重新注册全局热键", gap)
-                try:
-                    self._reinstall_hotkeys()
-                except Exception:  # noqa: BLE001
-                    log.exception("唤醒后重新注册热键失败")
-
-        self._hotkey_watchdog = threading.Thread(
-            target=_loop, daemon=True, name="hotkey-watchdog")
-        self._hotkey_watchdog.start()
-        log.info("热键看门狗已启动（睡眠唤醒后自动重新注册）")
-
-    def _reinstall_hotkeys(self) -> None:
-        """重新注册全部已配置的热键。
-
-        正常情况下按当前已注册的 key 重装；若此前一个都没注册上
-        （例如启动时被别的程序占用），则把配置里的热键都再试一遍 ——
-        唤醒往往正是重新抢回热键的时机。
-        """
-        keys = [k for _h, k in self._hotkey_handles]
-        if not keys:
-            hotkeys = self.settings.get("hotkeys") or {}
-            keys = [v for v in hotkeys.values() if v]
-        if not keys:
-            log.warning("热键看门狗：没有可重新注册的热键")
-            return
-        for key in keys:
-            self._install_hotkey(key)
-        if self._hotkey_handles:
-            log.info("唤醒后热键已恢复: %s", ", ".join(k for _h, k in self._hotkey_handles))
-        else:
-            log.warning("唤醒后热键仍未能注册，可能已被其它程序占用")
-
+                keyboard.remove_hotkey(handle)
+            except Exception as exc:  # noqa: BLE001
+                log.debug("解绑 keyboard 热键失败: %s", exc)
+        self._hotkey_handles = []
 
     # ------------------------------------------------------------------ #
     def quit(self):
@@ -545,13 +545,7 @@ class AliceApp:
         self._quitting.set()
         log.info("正在退出…")
         try:
-            for handle, _key in self._hotkey_handles:
-                try:
-                    import keyboard
-
-                    keyboard.remove_hotkey(handle)
-                except Exception:  # noqa: BLE001
-                    pass
+            self.stop_hotkeys()
         except Exception:  # noqa: BLE001
             pass
         if self._tray is not None:
@@ -565,6 +559,12 @@ class AliceApp:
         threading.Timer(4.0, os._exit, args=[0]).start()
 
     # ------------------------------------------------------------------ #
+    def _hotkeys_active(self) -> bool:
+        """是否至少有一个全局热键注册成功（原生或回退路径皆可）。"""
+        if self._hotkey_manager is not None and self._hotkey_manager.registered_count > 0:
+            return True
+        return bool(self._hotkey_handles)
+
     def _escape_hatch_available(self) -> bool:
         """
         逃生通道是否可用 = 托盘起来了 **且** 至少注册到一个全局热键。
@@ -573,7 +573,7 @@ class AliceApp:
         两者缺一就不能安全地隐藏任务栏按钮（见 WindowController.apply_taskbar_policy）。
         抽成独立方法是为了让冒烟测试能覆盖这段判定，而不必真的跑 GUI。
         """
-        return (self._tray is not None) and bool(self._hotkey_handles)
+        return (self._tray is not None) and self._hotkeys_active()
 
     # ------------------------------------------------------------------ #
     def _on_gui_started(self):
@@ -650,8 +650,6 @@ class AliceApp:
         self.build_windows()
         self.start_hotkeys()
         self.start_tray()
-        # 睡眠/休眠唤醒后 WH_KEYBOARD_LL 钩子会失效，靠看门狗重新注册
-        self.start_hotkey_watchdog()
 
         debug = os.environ.get("ALICE_DEBUG") == "1"
         log.info("进入 GUI 事件循环（debug=%s）", debug)
