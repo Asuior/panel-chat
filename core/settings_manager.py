@@ -30,7 +30,7 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     # 始终置顶，无“取消置顶”开关（工具窗口没有任务栏入口，
     # 一旦取消置顶 + 显示桌面就找不到窗口了）
     "chat": {
-        "width": 500,                   # 默认 500x700（不得小于 min_width/min_height）
+        "width": 800,                   # 默认 500x700（不得小于 min_width/min_height）
         "height": 700,
         "min_width": 500,
         "min_height": 600,
